@@ -9,6 +9,7 @@ const state = {
   needsGate: true,
   workspace: null,
   projects: [],
+  heroes: [],
   heroSlots: [],
   styleSlot: null,
   stageSlot: null,
@@ -652,7 +653,9 @@ function refreshActionLocks() {
     if (chartBtn) chartBtn.disabled = !frozen || !bible || !idleOk || busy;
   }
   if ($("deleteHeroBtn")) $("deleteHeroBtn").disabled = !bible;
+  if ($("exportHeroPackBtn")) $("exportHeroPackBtn").disabled = !bible;
   if ($("deleteStageBtn")) $("deleteStageBtn").disabled = !state.stageBible?.stage_id;
+  if ($("exportStagePackBtn")) $("exportStagePackBtn").disabled = !state.stageBible?.stage_id;
   const bgm = state.stageBgmAsset;
   const sid = state.stageBible?.stage_id;
   const bgmBusy = sid && JOBS.keys.has(`stage-bgm:${sid}`);
@@ -3562,6 +3565,7 @@ async function testAuth() {
 
 async function loadHeroes() {
   const { heroes } = await api("/api/heroes");
+  state.heroes = heroes || [];
   const box = $("heroList");
   if (!heroes.length) {
     box.textContent = "暂无";
@@ -5705,6 +5709,40 @@ async function generateAll() {
   }
 }
 
+async function downloadContentPack(body, statusText) {
+  setStatus(statusText || "正在打包…", "");
+  const res = await fetch("/api/pack/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = `导出失败 (${res.status})`;
+    try {
+      const data = await res.json();
+      if (typeof data.detail === "string") detail = data.detail;
+      else if (data.detail) detail = JSON.stringify(data.detail);
+    } catch {
+      /* keep status text */
+    }
+    throw new Error(detail);
+  }
+  const blob = await res.blob();
+  let filename = "pack.hgpk.zip";
+  const disp = res.headers.get("Content-Disposition") || "";
+  const match = disp.match(/filename="([^"]+)"/i);
+  if (match) filename = match[1];
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  setStatus(`已下载 ${filename}。发给对战端：放入 game/incoming/ 或 python3 serve.py --import 该文件。`, "ok");
+}
+
 async function commitAsset(kind, slotId) {
   persistVertex();
   if (kind === "hero") {
@@ -6760,6 +6798,55 @@ $("newStageBtn")?.addEventListener("click", newStage);
 $("newStageListBtn")?.addEventListener("click", newStage);
 $("saveHeroBtn")?.addEventListener("click", () => saveHeroProgress());
 $("deleteHeroBtn")?.addEventListener("click", () => deleteHeroDraft());
+$("exportHeroPackBtn")?.addEventListener("click", async () => {
+  const hid = currentHeroId();
+  if (!hid) {
+    setStatus("先打开一个英雄。", "bad");
+    return;
+  }
+  try {
+    await downloadContentPack({ hero_ids: [hid], stage_ids: [] }, `正在导出英雄「${hid}」…`);
+  } catch (err) {
+    setStatus(String(err.message || err), "bad");
+  }
+});
+$("exportStagePackBtn")?.addEventListener("click", async () => {
+  const sid = state.stageBible?.stage_id;
+  if (!sid) {
+    setStatus("先打开一张地图。", "bad");
+    return;
+  }
+  try {
+    await downloadContentPack({ hero_ids: [], stage_ids: [sid] }, `正在导出地图「${sid}」…`);
+  } catch (err) {
+    setStatus(String(err.message || err), "bad");
+  }
+});
+$("exportAllHeroesPackBtn")?.addEventListener("click", async () => {
+  try {
+    const list = state.heroes?.length ? state.heroes : await loadHeroes();
+    const ids = (list || []).map((h) => h.hero_id).filter(Boolean);
+    if (!ids.length) {
+      setStatus("本工程还没有英雄可导出。先采用入库。", "bad");
+      return;
+    }
+    await downloadContentPack({ hero_ids: ids, stage_ids: [] }, "正在导出全部已入库英雄…");
+  } catch (err) {
+    setStatus(String(err.message || err), "bad");
+  }
+});
+$("exportAllStagesPackBtn")?.addEventListener("click", async () => {
+  try {
+    const ids = (state.stages || []).filter((s) => s.committed).map((s) => s.stage_id);
+    if (!ids.length) {
+      setStatus("本工程还没有已入库地图可导出。", "bad");
+      return;
+    }
+    await downloadContentPack({ hero_ids: [], stage_ids: ids }, "正在导出全部已入库地图…");
+  } catch (err) {
+    setStatus(String(err.message || err), "bad");
+  }
+});
 $("deleteStageBtn")?.addEventListener("click", () => deleteStage());
 $("genAllBtn")?.addEventListener("click", generateAll);
 $("unifyBodyBtn")?.addEventListener("click", unifyHeroBodyScale);

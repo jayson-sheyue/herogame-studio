@@ -4,4 +4,10 @@ __pycache__/
 .DS_Store
 settings.json
 settings.*.json
+!settings.example.json
+.idle-workspace/
 projects.json
+**/*service-account*.json
+**/application_default_credentials.json
+.env
+.env.*

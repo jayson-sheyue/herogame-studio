@@ -4,4 +4,10 @@ __pycache__/
 *.pyc
 studio/settings.json
 studio/settings.*.json
+!studio/settings.example.json
 studio/projects.json
+studio/.idle-workspace/
+**/*service-account*.json
+**/application_default_credentials.json
+.env
+.env.*

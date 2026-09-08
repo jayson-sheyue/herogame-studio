@@ -12,7 +12,7 @@ from io import BytesIO
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -119,6 +119,7 @@ from game_assets import (
     bake_all_hero_select_portraits,
     select_source_cell,
 )
+from packutil import build_pack_zip
 from portrait_assets import (
     delete_portrait,
     discard_portrait_slot,
@@ -256,6 +257,12 @@ class CommitBody(BaseModel):
     stage_id: str = ""
     cyan_key: bool = True
     vertex: VertexSettingsBody = VertexSettingsBody()
+
+
+class PackExportBody(BaseModel):
+    hero_ids: list[str] = []
+    stage_ids: list[str] = []
+    all_committed: bool = False
 
 
 class DiscardBody(BaseModel):
@@ -2315,6 +2322,30 @@ def _write_commit(
     if dest.exists():
         _archive_if_exists(dest)
     dest.write_bytes(raw)
+
+
+@app.post("/api/pack/export")
+def export_content_pack(body: PackExportBody) -> Response:
+    """Zip committed heroes/stages from the open project. Does not touch any other game install."""
+    _require_herogame()
+    try:
+        if body.all_committed:
+            raw, filename, _meta = build_pack_zip()
+        else:
+            raw, filename, _meta = build_pack_zip(
+                hero_ids=list(body.hero_ids or []),
+                stage_ids=list(body.stage_ids or []),
+            )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return Response(
+        content=raw,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.post("/api/commit")

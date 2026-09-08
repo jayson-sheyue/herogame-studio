@@ -169,6 +169,9 @@
             <button id="deleteStageBtn" class="danger" type="button" disabled>删除这张地图</button>
           </div>
           <div class="actions split">
+            <button id="exportStagePackBtn" type="button" disabled title="把本工程已入库的这张地图打成 zip，发给对战端导入。">导出此地图数据包</button>
+          </div>
+          <div class="actions split">
             <button id="stageBgmGenBtn" type="button" disabled>③ 生成地图 BGM</button>
             <button id="stageBgmCommitBtn" type="button" disabled>采用 BGM 入库</button>
             <button id="stageBgmDiscardBtn" type="button" disabled>丢弃 BGM 草稿</button>
@@ -257,9 +260,12 @@
           </div>
           <div class="actions split">
             <button id="saveHeroBtn" type="button">保存进度</button>
+            <button id="exportHeroPackBtn" type="button" disabled title="把本工程已入库的这套英雄打成 zip，发给对战端导入。不写进别人电脑上的游戏。">导出此英雄数据包</button>
+          </div>
+          <div class="actions split">
             <button id="deleteHeroBtn" class="danger" type="button">删除这份草稿</button>
           </div>
-          <p class="tiny">风格锚点必须先入库。三视图确定后才能批量出动作条。单槽不满意可「重写提示词」或「再出一版草稿」。切分只预览；「重新去青覆盖」只对已入库图再抠青边。「一键统一人物尺寸」按 idle 躯干身高对齐（不含出场/战败/战胜 CG）。「身长校对工作区」含出场/战败/战胜，可逐套微调后直接入库。删除草稿只清工坊设定和草稿，已入库的游戏资源会留着。</p>
+          <p class="tiny">「采用入库」只写入<strong>当前工坊工程</strong>的成品目录，不会热更新你正在跑的对战进程。发给对战端请用「导出数据包」。风格锚点必须先入库。三视图确定后才能批量出动作条。</p>
         </div>
       </section>
 
@@ -349,7 +355,7 @@
           <li><b>英雄套图</b>三视图 → 动作 → CG → 台词</li>
           <li><b>立绘/桌宠</b>三视图 → 动作条 → 去青导出透明帧</li>
         </ol>
-        <p class="tiny">草稿在 <code>assets/studio/drafts/</code>。英雄入库进 <code>assets/game/</code>；选人头像 <code>select.png</code> 可自动烘焙或手动裁剪，在套图视口最底部卡片。</p>
+        <p class="tiny">草稿在 <code>assets/studio/drafts/</code>。「采用入库」写入当前工程的 <code>assets/game/</code>。交给对战端请「导出数据包」，对战用 <code>--import</code> 或把 zip 放进 <code>game/incoming/</code>。</p>
       </section>
 
       <section class="fold open" data-rail="stages" hidden>
@@ -357,6 +363,7 @@
         <div class="fold-body">
           <div class="actions">
             <button id="newStageListBtn" type="button">新建地图</button>
+            <button id="exportAllStagesPackBtn" type="button" title="导出本工程全部已入库地图">导出全部地图包</button>
           </div>
           <div id="stageList" class="asset-list">暂无</div>
         </div>
@@ -376,6 +383,7 @@
         <div class="fold-body">
           <div class="actions">
             <button id="newHeroListBtn" type="button">新建英雄</button>
+            <button id="exportAllHeroesPackBtn" type="button" title="导出本工程全部已入库英雄">导出全部英雄包</button>
           </div>
           <div id="heroList" class="asset-list">暂无</div>
         </div>

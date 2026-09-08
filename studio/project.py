@@ -17,8 +17,15 @@ KIND = KIND_HEROGAME  # backward-compat alias
 VALID_KINDS = (KIND_HEROGAME, KIND_DESKPET)
 
 TOOL_ROOT = Path(__file__).resolve().parent
-DEFAULT_ROOT = TOOL_ROOT.parent
+# Never treat the folder that *contains* studio/ as the content project — that is
+# how the fight game (HeroGame) used to get overwritten by 「采用入库」.
+IDLE_ROOT = TOOL_ROOT / ".idle-workspace"
+DEFAULT_ROOT = IDLE_ROOT
 REGISTRY_PATH = TOOL_ROOT / "projects.json"
+FIGHT_REFUSE = (
+    "这是对战游戏目录，不是作图工程。请打开或新建独立的工坊内容文件夹"
+    "（不要选带 game/serve.py 的目录）。套图做好后导出 .hgpk.zip，再导入对战端。"
+)
 
 LINE_LABELS = {
     KIND_HEROGAME: "对战游戏资产",
@@ -87,7 +94,7 @@ class ProjectPaths:
             path.mkdir(parents=True, exist_ok=True)
 
 
-paths = ProjectPaths(DEFAULT_ROOT)
+paths = ProjectPaths(IDLE_ROOT)
 
 
 def normalize_kind(kind: str | None) -> str:
@@ -185,8 +192,19 @@ def write_marker(root: Path, name: str, *, kind: str | None = None, extra: dict 
     return data
 
 
+def is_fight_install(root: Path) -> bool:
+    """True for a playable game tree (serve.py), which must never be a studio content project."""
+    try:
+        resolved = root.expanduser().resolve()
+    except OSError:
+        return False
+    return (resolved / "game" / "serve.py").is_file()
+
+
 def looks_like_project(root: Path) -> bool:
     if not root.is_dir():
+        return False
+    if is_fight_install(root):
         return False
     if (root / MARKER).exists():
         return True
@@ -293,6 +311,8 @@ def activate(root: Path, name: str = "", *, kind: str | None = None) -> dict:
         raise FileNotFoundError(f"文件夹不存在：{root}")
     if not root.is_dir():
         raise NotADirectoryError(f"不是文件夹：{root}")
+    if is_fight_install(root):
+        raise ValueError(FIGHT_REFUSE)
     k = normalize_kind(kind or detect_kind(root))
     paths.set_root(root)
     paths.ensure(k)
@@ -346,10 +366,6 @@ def set_line(kind: str) -> dict:
                     }
             except Exception:
                 pass
-    # Soft-point paths at tool parent so file mounts still resolve, but flag no project
-    if k == KIND_HEROGAME and DEFAULT_ROOT.is_dir():
-        # Don't auto-claim DEFAULT_ROOT as deskpet
-        paths.set_root(DEFAULT_ROOT)
     return {
         "ok": True,
         "line": k,
@@ -486,6 +502,8 @@ def create_project(name: str, folder: str, *, kind: str = KIND_HEROGAME) -> dict
     k = normalize_kind(kind)
     root = _resolve_folder(folder, must_exist=False)
     display = (name or "").strip() or root.name
+    if is_fight_install(root):
+        raise ValueError(FIGHT_REFUSE)
     if root == paths.root.resolve() and looks_like_project(root):
         raise ValueError("这就是当前正在编辑的工程。请另选一个空文件夹。")
     if looks_like_project(root):
@@ -501,6 +519,8 @@ def create_project(name: str, folder: str, *, kind: str = KIND_HEROGAME) -> dict
 
 def open_project(folder: str, name: str = "", *, kind: str | None = None) -> dict:
     root = _resolve_folder(folder, must_exist=True)
+    if is_fight_install(root):
+        raise ValueError(FIGHT_REFUSE)
     k = normalize_kind(kind or detect_kind(root))
     display = (name or "").strip() or read_marker(root).get("name") or root.name
     write_marker(root, display, kind=k)
@@ -510,6 +530,8 @@ def open_project(folder: str, name: str = "", *, kind: str | None = None) -> dic
 def use_folder(folder: str, name: str = "", *, kind: str | None = None) -> dict:
     """Open an existing project, or init an empty folder for the current product line."""
     root = _resolve_folder(folder, must_exist=True)
+    if is_fight_install(root):
+        raise ValueError(FIGHT_REFUSE)
     alias = (name or "").strip()
     line = normalize_kind(kind or current_line() or KIND_HEROGAME)
     if looks_like_project(root):
@@ -600,17 +622,17 @@ def boot() -> dict:
                 return current_payload()
             except Exception:
                 pass
-    paths.set_root(DEFAULT_ROOT)
-    paths.ensure(KIND_HEROGAME)
+    paths.set_root(IDLE_ROOT)
+    IDLE_ROOT.mkdir(parents=True, exist_ok=True)
     return {
-        "root": str(paths.root),
-        "name": read_marker(paths.root).get("name") or paths.root.name,
-        "kind": detect_kind(paths.root) if looks_like_project(paths.root) else "",
+        "root": "",
+        "name": "",
+        "kind": "",
         "line": "",
         "line_label": "",
         "created": "",
-        "game": str(paths.game),
-        "studio": str(paths.studio),
+        "game": "",
+        "studio": "",
     }
 
 
