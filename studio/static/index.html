@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>英灵大乱斗 · 作图工坊</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+SC:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=58" />
+</head>
+<body data-workspace="style" data-line="" data-gate="1">
+  <div id="lineGate" class="line-gate" hidden>
+    <div class="line-gate-card">
+      <h1>作图工坊</h1>
+      <p class="line-gate-lead">先选产品线。对战游戏与桌宠立绘使用<strong>不同工程</strong>，互不混用。</p>
+      <div class="line-gate-choices">
+        <button type="button" class="line-choice" data-pick-line="herogame">
+          <b>对战游戏资产</b>
+          <span>风格锚点 · 地图 · 英雄套图 · 入库对战</span>
+        </button>
+        <button type="button" class="line-choice" data-pick-line="deskpet">
+          <b>桌宠 / 立绘资产</b>
+          <span>风格锚点 · 动作清单 · 去青导出透明帧</span>
+        </button>
+      </div>
+      <p class="tiny">本机 ADC 登录两边共用；GCP 项目 ID / 模型按<strong>产品线分别记忆</strong>。工程文件夹与资产目录完全隔离。</p>
+    </div>
+  </div>
+
+  <div id="projectGate" class="line-gate project-gate" hidden>
+    <div class="line-gate-card">
+      <h1 id="projectGateTitle">选择工程</h1>
+      <p class="tiny" id="projectGateLead">新建空文件夹，或打开已有本产品线工程。</p>
+      <div id="projectGateList" class="project-recent"></div>
+      <div class="actions split">
+        <button id="projectGateBrowseBtn" class="primary" type="button">选择文件夹…</button>
+        <button id="projectGateBackBtn" type="button">返回产品线</button>
+      </div>
+      <label class="gate-alias">别名（新建时可选）
+        <input id="projectGateAlias" placeholder="不填则用文件夹名" autocomplete="off" />
+      </label>
+    </div>
+  </div>
+
+  <header class="menubar">
+    <div class="brand">
+      <span class="mark">英</span>
+      <div>
+        <h1>作图工坊</h1>
+        <p id="brandSub">选择产品线后进入工作区</p>
+      </div>
+    </div>
+    <nav class="tabs" id="modeNav">
+      <button type="button" data-mode="style" data-lines="herogame,deskpet" class="on">风格锚点</button>
+      <button type="button" data-mode="stages" data-lines="herogame">地图库</button>
+      <button type="button" data-mode="heroes" data-lines="herogame">英雄套图</button>
+      <button type="button" data-mode="portraits" data-lines="deskpet">立绘套图</button>
+    </nav>
+    <div class="menubar-right">
+      <button type="button" id="switchLineBtn" class="ghost-btn" title="切换产品线">切换产品线</button>
+      <div class="health" id="health">正在检查鉴权…</div>
+      <div class="inbox" id="inbox">
+        <button type="button" class="inbox-toggle" id="inboxToggle" aria-expanded="false" aria-controls="inboxPanel">
+          任务 <span id="inboxBadge" hidden>0</span>
+        </button>
+        <div class="inbox-panel" id="inboxPanel" hidden>
+          <div class="inbox-head">最近任务</div>
+          <ol id="inboxList" class="inbox-list"><li class="empty">还没有任务。点左侧按钮出图或建工程后会出现在这里。</li></ol>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <main class="workspace">
+    <aside class="dock inspector">
+      <details class="fold" open>
+        <summary id="projectFoldTitle">工程</summary>
+        <div class="fold-body">
+          <p class="tiny" id="projectNow">正在读取当前工程…</p>
+          <div class="actions">
+            <button id="projectSwitchBtn" class="primary" type="button">切换项目</button>
+          </div>
+          <p class="tiny" id="projectFoldHint">当前产品线的工程列表。切换项目不会跨到另一条产品线。</p>
+        </div>
+      </details>
+
+      <details class="fold" open>
+        <summary>Vertex 设定</summary>
+        <div class="fold-body">
+          <label>GCP 项目 ID
+            <input id="gcpProject" placeholder="your-gcp-project" autocomplete="off" />
+          </label>
+          <label>生提示词模型区域
+            <input id="gcpLocation" placeholder="global 或 us-central1" />
+          </label>
+          <label>生图模型区域
+            <input id="gcpImageLocation" placeholder="global 或 us-central1" />
+          </label>
+          <label>生提示词模型
+            <input id="textModel" placeholder="gemini-2.5-flash" />
+          </label>
+          <label>生图模型
+            <input id="imageModel" placeholder="gemini-2.5-flash-image" />
+          </label>
+          <div class="actions">
+            <button id="testAuthBtn" class="primary" type="button">测试鉴权</button>
+          </div>
+          <ul class="checks" id="authChecks"></ul>
+          <p class="tiny">鉴权走本机 <code>gcloud auth application-default login</code>。通过后记住<strong>当前产品线</strong>这组设定（对战 / 桌宠互不覆盖）。生图区域留空则沿用提示词区域。</p>
+        </div>
+      </details>
+
+      <section class="fold open" data-rail="style">
+        <h2>风格锚点</h2>
+        <div class="fold-body">
+          <p class="tiny">一个项目只有一个风格锚点。写出提示词 → 出草稿 → 采用入库后定调，之后不可再改。然后再做地图、英雄或立绘。</p>
+          <label>备注
+            <textarea id="styleNotes" rows="3" placeholder="可空。例如：再硬一点的描边，身形接近死神 vs 火影，不要 Q 版。"></textarea>
+          </label>
+          <div class="actions split">
+            <button id="styleInferBtn" class="primary" type="button">① 写出生图提示词</button>
+            <button id="styleGenBtn" type="button" disabled>② 按提示词出图</button>
+          </div>
+          <label class="file">
+            <span>或上传已有风格图</span>
+            <input id="styleUpload" type="file" accept="image/png,image/jpeg,image/webp" />
+          </label>
+          <label>生图提示词 <span>可改</span>
+            <textarea id="stylePrompt" rows="8" placeholder="点「① 写出生图提示词」之后，英文提示词会出现在这里。"></textarea>
+          </label>
+          <p class="lock" id="styleLock"></p>
+          <p class="tiny" id="styleFrozenNote" hidden>本项目风格已定调，不可更改、不可撤回。</p>
+        </div>
+      </section>
+
+      <section class="fold open" data-rail="stages" hidden>
+        <h2>地图简报</h2>
+        <div class="fold-body">
+          <p class="tiny">已打开某张地图时，「写出提示词」会改这一张，不会另开条目。要全新地点请先点「新建地图」。可站立的平地和高台必须画在同一侧视图层（台阶断面），不要 3/4 透视把高台画到背景里。</p>
+          <label>描述 <span>必填</span>
+            <textarea id="stageDescription" rows="3" placeholder="例如：始皇陵兵马俑坑，深赭陶俑阵列，远处墓门与冷月。"></textarea>
+          </label>
+          <label>关键词
+            <input id="stageKeywords" placeholder="陵墓, 陶土, 冷月, 可站立地面" />
+          </label>
+          <label>地形
+            <select id="stageTerrain">
+              <option value="auto">按地点自己决定（推荐）</option>
+              <option value="flat">通铺平地</option>
+              <option value="platforms">画出高台</option>
+              <option value="pits">画出可站立壕沟 / 塌陷低地</option>
+              <option value="mixed">高台 + 低地壕沟</option>
+            </select>
+          </label>
+          <label>参考已有地图
+            <select id="stageRef">
+              <option value="">不参考（第一张图建议空）</option>
+            </select>
+          </label>
+          <div class="actions split">
+            <button id="newStageBtn" type="button">新建地图</button>
+            <button id="stageInferBtn" class="primary" type="button">① 写出生图提示词</button>
+          </div>
+          <div class="actions split">
+            <button id="stageGenBtn" type="button" disabled>② 按提示词出图</button>
+            <button id="deleteStageBtn" class="danger" type="button" disabled>删除这张地图</button>
+          </div>
+          <div class="actions split">
+            <button id="stageBgmGenBtn" type="button" disabled>③ 生成地图 BGM</button>
+            <button id="stageBgmCommitBtn" type="button" disabled>采用 BGM 入库</button>
+            <button id="stageBgmDiscardBtn" type="button" disabled>丢弃 BGM 草稿</button>
+          </div>
+          <label>BPM
+            <input id="stageBgmBpm" type="number" min="90" max="160" value="118" />
+          </label>
+          <label class="checkline"><input id="stageBgmUseImage" type="checkbox" checked /> 参考 stage.png（图生音乐）</label>
+          <audio id="stageBgmPreview" controls style="width:100%;margin-top:8px" hidden></audio>
+          <p class="tiny">Lyria 3 Clip · 30 秒纯器乐循环，偏格斗压迫感（少欢快旋律）。读取 visual 与可选地图图，入库后写入 <code>stage.json</code> 的 <code>bgm</code>，对战端自动循环。</p>
+          <p class="tiny">删除会清掉工坊设定、草稿，以及已入库的 <code>assets/game/stages/</code>。试玩端下一场对战不再出现这张图。</p>
+        </div>
+      </section>
+
+      <section class="fold open" data-rail="portraits" hidden>
+        <h2>立绘简报</h2>
+        <div class="fold-body">
+          <p class="tiny">独立于对战英雄：只出青屏动作条 → 切分 → <b>去青导出透明 PNG</b>到本机，不写 fighter、不进 game/heroes。</p>
+          <div class="actions split">
+            <button id="newPortraitBtn" class="primary" type="button">新建立绘</button>
+            <button id="deletePortraitBtn" class="danger" type="button" disabled>删除这份立绘</button>
+          </div>
+          <label>人物形象 <span>必填</span>
+            <textarea id="portraitAppearance" rows="3" placeholder="例如：穿红围巾的小狐狸桌宠，圆耳蓬尾，侧视剪影可爱可读。"></textarea>
+          </label>
+          <label>人物配饰
+            <textarea id="portraitGear" rows="2" placeholder="例如：红围巾、小铃铛、布袋。"></textarea>
+          </label>
+          <label>套图清单 <span>先定类别与帧数，再写提示词</span></label>
+          <p class="tiny">勾选要出的动作；改帧数（三视图固定 4）。也可添加自定义类别。推理只按清单写提示词，不会自创槽位。</p>
+          <div id="portraitSlotPicker" class="portrait-slot-picker"></div>
+          <div class="actions split portrait-slot-add">
+            <input id="portraitCustomSlotTitle" type="text" placeholder="自定义动作，如：坐下" />
+            <input id="portraitCustomSlotFrames" type="number" min="2" max="8" value="5" title="帧数" />
+            <button id="portraitAddSlotBtn" type="button">添加</button>
+          </div>
+          <div class="actions split">
+            <button id="portraitInferBtn" class="primary" type="button">① 写出动作提示词</button>
+            <button id="portraitGenAllBtn" type="button" disabled title="需先有三视图草稿；只生成尚未出图的其余动作">② 生成全部动作</button>
+          </div>
+          <div class="actions split">
+            <button id="portraitExportAllBtn" type="button" disabled>去青导出全部</button>
+            <button id="portraitRevealBtn" type="button" disabled title="在 Finder / 资源管理器中打开该立绘导出目录">打开导出文件夹</button>
+          </div>
+          <div class="actions split">
+            <button id="portraitUnifyBodyBtn" type="button" disabled title="以基准动作（待机或走动等）躯干身高为基准，NEAREST 缩放对齐各动作草稿条。不重新生图。">一键统一人物尺寸</button>
+            <button id="portraitBodyScaleBtn" type="button" disabled title="逐套对照刻度，微调后写回草稿并自动去青导出。需至少一套动作条草稿。">身长校对工作区</button>
+          </div>
+          <p class="tiny">卡片里的提示词可直接改，会自动保存；也可点「微调提示词」写不满意的点让系统重写，再点「生成草稿 / 再出一版」。动作条必须跟三视图同一人；人物主体禁止青/青绿/水色（便于去青抠图）。草稿可「丢弃」后重出。身长校对保存本套时会写回草稿并<strong>自动去青导出</strong>该槽透明帧。「删除这份立绘」会清掉设定、草稿与已导出透明帧。</p>
+          <p class="tiny" id="portraitExportHint">导出目录：当前工程 <code>assets/studio/exports/portraits/&lt;id&gt;/</code></p>
+        </div>
+      </section>
+
+      <section class="fold open" data-rail="heroes" hidden>
+        <h2>英雄简报</h2>
+        <div class="fold-body">
+          <div class="actions split">
+            <button id="newHeroBtn" class="primary" type="button">新建英雄</button>
+          </div>
+          <label>人物形象 <span>必填</span>
+            <textarea id="appearance" rows="3" placeholder="例如：年轻的努尔哈赤，貂皮暖帽，野猪皮十三副甲，身形结实，侧视剪影能认出八旗统帅。"></textarea>
+          </label>
+          <label class="file">
+            <span>真人参考图（可选）</span>
+            <input id="heroRefUpload" type="file" accept="image/png,image/jpeg,image/webp" />
+          </label>
+          <div id="heroRefPreview" class="ref-photo" hidden>
+            <img id="heroRefImg" alt="参考图预览" />
+            <button type="button" id="heroRefClear" class="danger">清除参考图</button>
+          </div>
+          <p class="tiny">画得不像时，上传正面/半身真人照片。生成「人物三视图」会按脸与体态对齐成像素角色；服装仍听形象文字。之后动作条自动跟三视图，不必每槽再贴照片。</p>
+          <label>人物武器配饰
+            <textarea id="gear" rows="2" placeholder="例如：腰刀、牛角弓、八旗小旗、甲片与皮毛边。"></textarea>
+          </label>
+          <label>技能机制 <span>必填</span>
+            <textarea id="kitBrief" rows="3" placeholder="例如：地面普攻横斩；上+普攻站地朝上挑；下+普攻半空下劈；小技能朝前施法；上+技能地面对空；下+技能空中对地；奥义召铁骑。"></textarea>
+          </label>
+          <p class="tiny">只填这三项。系统会推理关键帧提示词（动作 + 弹道 fx_*）和 moves 数值。先单独生成并采用入库三视图，再一键生成其余套图（同时 3 张）。出图后先切分播放确认，再入库；切分不会写入游戏。原图会留着，可换一种切法而不重新生图。出图在后台跑，等待时可切换去做另一个英雄或地图。</p>
+          <div class="actions split">
+            <button id="inferBtn" class="primary" type="button">① 写出关键帧提示词</button>
+            <button id="genAllBtn" type="button" disabled>一键生成其余套图</button>
+          </div>
+          <div class="actions split">
+            <button id="unifyBodyBtn" type="button" disabled title="以 idle 躯干身高（忽略武器/粒子尖刺）为基准，NEAREST 缩放对齐各动作条。不重新生图。">一键统一人物尺寸</button>
+            <button id="bodyChartBtn" type="button" disabled title="页内工作区：逐套对照刻度，可微调单帧尺寸并直接入库。">身长校对工作区</button>
+          </div>
+          <div class="actions split">
+            <button id="saveHeroBtn" type="button">保存进度</button>
+            <button id="deleteHeroBtn" class="danger" type="button">删除这份草稿</button>
+          </div>
+          <p class="tiny">风格锚点必须先入库。三视图确定后才能批量出动作条。单槽不满意可「重写提示词」或「再出一版草稿」。切分只预览；「重新去青覆盖」只对已入库图再抠青边。「一键统一人物尺寸」按 idle 躯干身高对齐（不含出场/战败/战胜 CG）。「身长校对工作区」含出场/战败/战胜，可逐套微调后直接入库。删除草稿只清工坊设定和草稿，已入库的游戏资源会留着。</p>
+        </div>
+      </section>
+
+      <section class="fold open" data-rail="heroes" hidden>
+        <h2>台词与配音</h2>
+        <div class="fold-body">
+          <p class="tiny">默认走 Gemini-TTS。游戏只播六句：选人浏览、出场、受击（短促）、奥义、胜利、战败。普攻与技能不配音。开播后会完整念完。点「生成并入库」才写入 <code>assets/game/</code>。</p>
+          <label>声线性格
+            <textarea id="voicePersona" rows="2" placeholder="例如：年轻帝王，短句，文言夹白话，怒时压低再爆。"></textarea>
+          </label>
+          <label>台词语言
+            <input id="voiceLanguageSearch" type="search" placeholder="搜索：高棉、km、English…" autocomplete="off" />
+            <select id="voiceLanguage" class="lang-select" size="7">
+              <option value="cmn-CN">普通话（简体）</option>
+            </select>
+          </label>
+          <p class="tiny" id="voiceLanguageHint">上方可搜中文名、英文名或代码。高棉语 km-KH 目前 Google 不支持合成，请用录音克隆，或试 th-TH / vi-VN。</p>
+          <label>说话人年龄
+            <select id="voiceAge">
+              <option value="young">青年</option>
+              <option value="adult" selected>壮年</option>
+              <option value="elder">老年</option>
+            </select>
+          </label>
+          <label>性别倾向
+            <select id="voiceGender">
+              <option value="male">男声</option>
+              <option value="female">女声</option>
+              <option value="neutral">中性</option>
+            </select>
+          </label>
+          <label>配音引擎
+            <select id="ttsEngine">
+              <option value="gemini">Gemini-TTS（带情绪）</option>
+              <option value="cloud">Cloud 声线（朗读）</option>
+            </select>
+          </label>
+          <label id="ttsModelWrap">Gemini 模型
+            <select id="ttsModel">
+              <option value="gemini-2.5-flash-tts">Gemini 2.5 Flash TTS</option>
+              <option value="gemini-3.1-flash-tts-preview">Gemini 3.1 Flash TTS</option>
+              <option value="gemini-2.5-pro-tts">Gemini 2.5 Pro TTS</option>
+            </select>
+          </label>
+          <label id="ttsVoiceWrap">TTS 声线
+            <select id="ttsVoice"></select>
+          </label>
+          <div class="voice-sliders" id="ttsSliders">
+            <label>语速 <span id="ttsRateVal">1.00</span>
+              <input id="ttsRate" type="range" min="0.7" max="1.25" step="0.05" value="1" />
+            </label>
+            <label>音高 <span id="ttsPitchVal">0</span>
+              <input id="ttsPitch" type="range" min="-8" max="8" step="1" value="0" />
+            </label>
+          </div>
+          <div id="voiceLines" class="voice-lines"></div>
+          <div class="actions split">
+            <button id="voiceInferBtn" type="button">写出台词</button>
+            <button id="voiceCommitBtn" class="primary" type="button">生成并入库全部语音</button>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <section class="viewport">
+      <div class="viewport-toolbar">
+        <div class="viewport-title">
+          <span class="viewport-dot"></span>
+          <h2 id="boardTitle">风格锚点</h2>
+        </div>
+        <label class="check" id="cyanWrap" title="只在点「采用入库 / 覆盖入库」时生效。从画面边缘洪水填充抠掉 #00FFFF，金色/白色粒子会留下。草稿始终留青底方便检查。「重新去青覆盖」是对已经入库的游戏 PNG 再用更严算法抠一次，不会重新切分。">
+          <input type="checkbox" id="cyanKey" checked />
+          入库去青底
+        </label>
+      </div>
+      <div class="viewport-body">
+        <div id="grid" class="grid"></div>
+      </div>
+    </section>
+
+    <aside class="dock outliner">
+      <section class="fold open" data-rail="style">
+        <h2>流水线</h2>
+        <ol class="pipeline">
+          <li><b>风格锚点</b>锁全作像素语言</li>
+          <li><b>地图库</b>入库可复用舞台</li>
+          <li><b>英雄套图</b>三视图 → 动作 → CG → 台词</li>
+          <li><b>立绘/桌宠</b>三视图 → 动作条 → 去青导出透明帧</li>
+        </ol>
+        <p class="tiny">草稿在 <code>assets/studio/drafts/</code>。英雄入库进 <code>assets/game/</code>；选人头像 <code>select.png</code> 可自动烘焙或手动裁剪，在套图视口最底部卡片。</p>
+      </section>
+
+      <section class="fold open" data-rail="stages" hidden>
+        <h2>已有地图</h2>
+        <div class="fold-body">
+          <div class="actions">
+            <button id="newStageListBtn" type="button">新建地图</button>
+          </div>
+          <div id="stageList" class="asset-list">暂无</div>
+        </div>
+      </section>
+
+      <section class="fold open bible" id="biblePanel" data-rail="heroes" hidden>
+        <h2>角色闸门</h2>
+        <p class="name" id="bibleName"></p>
+        <p class="line" id="bibleLine"></p>
+        <p class="lock" id="bibleLock"></p>
+        <ul id="bibleKit"></ul>
+        <p class="scene" id="bibleScene"></p>
+      </section>
+
+      <section class="fold open" data-rail="heroes" hidden>
+        <h2>已有英雄</h2>
+        <div class="fold-body">
+          <div class="actions">
+            <button id="newHeroListBtn" type="button">新建英雄</button>
+          </div>
+          <div id="heroList" class="asset-list">暂无</div>
+        </div>
+      </section>
+
+      <section class="fold open" data-rail="portraits" hidden>
+        <h2>已有立绘</h2>
+        <div class="fold-body">
+          <div class="actions split">
+            <button id="newPortraitListBtn" type="button">新建立绘</button>
+            <button id="deletePortraitListBtn" class="danger" type="button" disabled title="删除当前打开的立绘（含草稿与导出）">删除当前立绘</button>
+          </div>
+          <div id="portraitList" class="asset-list">暂无</div>
+          <p class="tiny">每项右侧「删」可删对应立绘。流水线：锁风格 → 形象/配饰 → 写出提示词 → 先三视图再其他动作 → 切分 → 去青导出。</p>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <span class="sb-pulse" aria-hidden="true"></span>
+    <div id="statusBar" class="status">先锁游戏风格锚点，再画地图和英雄。</div>
+    <div class="sb-meta">Nano Banana · Vertex ADC</div>
+  </footer>
+
+  <dialog id="previewDlg">
+    <img id="previewImg" alt="预览" />
+    <form method="dialog"><button type="submit">关闭</button></form>
+  </dialog>
+
+  <dialog id="bodyScaleDlg" class="body-scale-dlg">
+    <div class="body-scale-head">
+      <div>
+        <strong id="bodyScaleTitle">身长校对工作区</strong>
+        <p class="tiny" id="bodyScaleMeta"></p>
+      </div>
+      <button id="bodyScaleClose" type="button">关闭</button>
+    </div>
+    <div class="body-scale-nav">
+      <button id="bodyScalePrev" type="button">上一套</button>
+      <div class="body-scale-nav-mid">
+        <span id="bodyScaleSlotLabel">—</span>
+        <small id="bodyScaleSlotStat"></small>
+      </div>
+      <button id="bodyScaleNext" type="button">下一套</button>
+    </div>
+    <div class="body-scale-guide-bar">
+      <label class="body-scale-guide-label" title="全库默认 560px；倍率 0.5×～1.5×（280～840px）。会同步游戏 visualScale。">参考躯干高
+        <input id="bodyScaleGuideH" type="number" min="280" max="840" step="10" value="560" />
+        <span>px</span>
+      </label>
+      <button id="bodyScaleGuide05" type="button" title="矮小约 0.5×（280px）">0.5×</button>
+      <button id="bodyScaleGuide075" type="button" title="偏矮约 0.75×（420px）">0.75×</button>
+      <button id="bodyScaleGuideDefault" type="button" title="恢复全库默认 560px">默认</button>
+      <button id="bodyScaleGuide125" type="button" title="偏高约 1.25×（700px）">1.25×</button>
+      <button id="bodyScaleGuide15" type="button" title="大英雄约 1.5×（840px）">1.5×</button>
+      <button id="bodyScaleGuideApply" type="button" class="primary" title="写入本英雄并刷新准线">应用高差</button>
+      <small id="bodyScaleGuideNote" class="tiny">多数英雄共用默认高差；体型异常再单独改。</small>
+    </div>
+    <div class="body-scale-stage" id="bodyScaleStage">
+      <div class="body-scale-ruler" id="bodyScaleRuler" aria-hidden="true"></div>
+      <div class="body-scale-frames" id="bodyScaleFrames"></div>
+      <aside class="body-scale-play" id="bodyScalePlay">
+        <div class="body-scale-play-head">
+          <span>动图预览</span>
+          <label class="tiny">帧率
+            <input id="bodyScaleFps" type="number" min="4" max="16" value="8" />
+          </label>
+        </div>
+        <div class="body-scale-play-bay" id="bodyScalePlayBay">
+          <img id="bodyScalePlayImg" alt="动图预览" />
+          <div class="body-scale-play-guides" aria-hidden="true">
+            <div class="g-feet"><span>脚</span></div>
+            <div class="g-head" id="bodyScalePlayHead"><span>头</span></div>
+          </div>
+          <span class="ph" id="bodyScalePlayPh">调节后在此循环播放</span>
+        </div>
+        <p class="tiny" id="bodyScalePlayNote">按当前各帧滑杆比例预览，不写入游戏。</p>
+      </aside>
+    </div>
+    <div class="body-scale-buffer-wrap">
+      <div class="body-scale-buffer-head">
+        <strong id="bodyScaleBufferNote">移除缓冲 0</strong>
+        <span class="tiny">点缩略图插回选中帧之后 · 保存时丢弃仍在缓冲的贴图</span>
+      </div>
+      <div class="body-scale-buffer" id="bodyScaleBuffer"></div>
+    </div>
+    <div class="body-scale-tools">
+      <label class="body-scale-scale">选中帧尺寸
+        <input id="bodyScaleSlider" type="range" min="35" max="300" step="1" value="100" disabled />
+        <span class="body-scale-pct">
+          <input id="bodyScalePct" type="number" min="35" max="300" step="1" value="100" disabled title="直接填写百分比，范围 35–300（须能拉满最高 1.5× 准线）" />
+          <span>%</span>
+        </span>
+      </label>
+      <label class="body-scale-scale body-scale-feet" title="正数抬脚（人物上移），负数落脚；准线固定为 idle 基准">选中帧脚位
+        <input id="bodyScaleFeetSlider" type="range" min="-240" max="240" step="1" value="0" disabled />
+        <span class="body-scale-pct">
+          <input id="bodyScaleFeetPct" type="number" min="-240" max="240" step="1" value="0" disabled title="脚底相对绿线偏移（入库 px），正=抬起，负=下落；范围 ±240" />
+          <span>px</span>
+        </span>
+      </label>
+      <button id="bodyScaleSelectAll" type="button" disabled title="全选本套各帧">全选</button>
+      <button id="bodyScaleMoveLeft" type="button" disabled title="将选中帧（连续块）左移一位">← 左移</button>
+      <button id="bodyScaleMoveRight" type="button" disabled title="将选中帧（连续块）右移一位">右移 →</button>
+      <button id="bodyScaleDupFrame" type="button" disabled title="把选中帧复制到后面（同一贴图复用）">复用选中</button>
+      <button id="bodyScaleMirror" type="button" disabled title="水平镜像翻转选中帧">镜像选中</button>
+      <button id="bodyScaleToBuffer" type="button" disabled title="从时间线移入移除缓冲（保存时丢弃）">移入缓冲</button>
+      <button id="bodyScaleResetFrame" type="button" disabled>重置选中</button>
+      <button id="bodyScaleSuggest" type="button" disabled title="按 idle 基准为每帧填写建议百分比（需再点保存才会入库）">建议对齐基准</button>
+      <button id="bodyScaleSave" class="primary" type="button" disabled>保存本套并入库</button>
+      <button id="bodyScaleResplit" type="button" disabled title="从当前入库条重新等宽切开">重新切分预览</button>
+    </div>
+    <p class="tiny body-scale-hint">青/绿准线是全库统一的参考躯干高（默认 560px，可在上方为本英雄自定义；倍率 0.5×～1.5×）。预览按像素对齐这两根线，跳顶可高出青线。尺寸/脚位/镜像保存时原样写入；空中套保留腾空。时间线支持复用、缓冲与水平镜像。游戏用同一 visualScale 公式，无高矮特例。</p>
+  </dialog>
+
+  <dialog id="selectCropDlg" class="select-crop-dlg">
+    <div class="select-crop-head">
+      <div>
+        <strong>裁剪选人头像</strong>
+        <p class="tiny">中间方框大小固定。拖动底图移动，滚轮或滑杆缩放底图；入库仍是 128×128。</p>
+      </div>
+      <button id="selectCropClose" type="button">关闭</button>
+    </div>
+    <div class="select-crop-toolbar">
+      <label>底图
+        <select id="selectCropSource"></select>
+      </label>
+      <button id="selectCropSuggest" type="button" title="回到自动找脸构图">自动建议</button>
+      <label class="select-crop-zoom">缩放底图
+        <input id="selectCropZoom" type="range" min="0" max="100" value="40" />
+      </label>
+      <span class="tiny" id="selectCropMeta"></span>
+    </div>
+    <div class="select-crop-body">
+      <div class="select-crop-stage" id="selectCropStage">
+        <img id="selectCropImg" alt="裁剪底图" draggable="false" />
+        <div class="select-crop-veil" aria-hidden="true"></div>
+        <div class="select-crop-box" id="selectCropBox"></div>
+      </div>
+      <aside class="select-crop-side">
+        <div class="select-crop-preview-wrap">
+          <canvas id="selectCropPreview" width="128" height="128" aria-label="128 预览"></canvas>
+          <small>选人条预览</small>
+        </div>
+        <p class="tiny" id="selectCropHint">方框锁定，只挪/缩放图片，各英雄脸在卡上大小更接近。</p>
+        <div class="select-crop-actions">
+          <button id="selectCropCancel" type="button">取消</button>
+          <button id="selectCropApply" class="primary" type="button">确认裁剪并写入</button>
+        </div>
+      </aside>
+    </div>
+  </dialog>
+
+  <dialog id="projectDlg" class="project-dlg">
+    <div class="project-dlg-head">切换项目</div>
+    <div class="project-dlg-body">
+      <p class="tiny" id="projectDlgNow"></p>
+      <label>别名
+        <span class="path-row">
+          <input id="projectAlias" placeholder="例如：英灵大乱斗。新建不填则用文件夹名" autocomplete="off" />
+          <button id="projectRenameBtn" type="button">保存别名</button>
+        </span>
+      </label>
+      <p class="tiny">列表切换已有工程。选择空文件夹可新建（别名便于区分，文件夹名仍是落盘路径）。当前工程不能删，请先切走。</p>
+      <div id="projectRecent" class="project-recent"></div>
+    </div>
+    <div class="project-dlg-foot">
+      <button id="projectUseBtn" class="primary" type="button">选择文件夹…</button>
+      <button id="projectDlgClose" type="button">取消</button>
+    </div>
+  </dialog>
+
+  <script src="/static/app.js?v=97"></script>
+</body>
+</html>
