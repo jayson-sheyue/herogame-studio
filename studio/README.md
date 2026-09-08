@@ -227,24 +227,15 @@ stages/<地图id>/     # 必须含 stage.json 和 stage.png
 
 ## 维护人：从现有工程拆仓库（不打断本机开发）
 
-在**游戏工程外面**操作，不要改当前 `HeroGame` 的 git remote。
+在游戏工程**外面**另建目录，只复制 `studio/` 源码。必须排除本机鉴权文件：
 
 ```bash
-mkdir -p ~/Desktop/herogame-studio/studio
 rsync -a --exclude '.venv' --exclude '__pycache__' --exclude 'settings.json' \
   --exclude 'settings.*.json' --exclude 'projects.json' \
-  /Users/apple/Desktop/Demo/HeroGame/studio/ ~/Desktop/herogame-studio/studio/
-cp ~/Desktop/herogame-studio/studio/README.md ~/Desktop/herogame-studio/README.md
-cd ~/Desktop/herogame-studio
-git init -b main
-git add .
-git commit -m "Add pixel-art studio for local Vertex workflows."
-gh repo create herogame-studio --private --source . --remote origin --push
+  /path/to/your-game/studio/ /path/to/herogame-studio/studio/
 ```
 
-把仓库设为 **private**，再在 GitHub 把同事加成 collaborator。公开仓库会连提示词和模型配置一起公开。
-
-本机原来的 `HeroGame/studio` 继续用，两份代码之后用手工拷文件或 cherry-pick 同步即可。
+不要提交 `settings.json`、`projects.json`，也不要把整个游戏工程 push 上去。本机原来的工坊目录继续用即可。
 
 ---
 
