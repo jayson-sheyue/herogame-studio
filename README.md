@@ -1,6 +1,6 @@
 # 作图工坊
 
-本地网页工具：用自己的 Vertex AI Express / Google AI Studio API Key 制作像素格斗套图和桌宠立绘（提示词 → 出图 → 切分 → 入库或导出）。**不含对战游戏。**
+本地像素资产工坊，支持 macOS 桌面客户端与源码网页运行：用自己的 Vertex AI Express / Google AI Studio API Key 制作像素格斗套图和桌宠立绘（提示词 → 出图 → 切分 → 入库或导出）。**不含对战游戏。**
 
 公开仓库：<https://github.com/jayson-sheyue/herogame-studio>  
 对战端另仓：<https://github.com/jayson-sheyue/herogame>
@@ -8,6 +8,21 @@
 鉴权完全使用 **API Key**，不需要 Google Cloud CLI、GCP 项目 ID 或 ADC 登录。密钥默认只保存在本机服务内存中；主动勾选「记住密钥」后才使用系统凭据库。普通设置文件、工程、浏览器存储和导出包不包含 API Key。
 
 ---
+
+## macOS 客户端（本地测试版）
+
+Apple Silicon（M 系列芯片）／macOS 15 或更高版本：打开 `HeroGameStudio-0.1.0-beta.1-macOS-arm64.dmg`，将 **作图工坊.app** 拖入 **Applications** 后启动。内置 Python、依赖和本地服务，无需安装 Python、Node 或 gcloud，也不必保持终端开启。选择产品线与工程文件夹后，在 **API Key 设置**中输入自己的密钥。
+
+客户端使用原生 macOS 窗口、文件选择和保存对话框；关闭窗口即退出，任务或未保存修改会先提示。下载取消不会显示保存成功；客户端退出后只停止自己启动的服务，不影响原有网页服务。
+
+- 工程与导出：仍在你选择的独立工程文件夹，可直接打开原网页工程。
+- 工程列表与普通设置：`~/Library/Application Support/HeroGameStudio/`。原源码目录中的登记、设置与密钥不自动复制；旧工程通过选择原文件夹重新关联。
+- 密钥默认仅本次会话有效，正常退出后清除；主动记住时使用 macOS 钥匙串。应用升级保持 Bundle ID 和设置路径不变。
+- 手动升级：等待任务完成、正常退出，再替换应用。保留应用数据目录及工程；备份时复制整个工程文件夹。删除 `.app` 不会删除工程。
+
+这是 PR 验收包，只做本机 ad-hoc 完整性签名，**尚未做 Developer ID 签名与 Apple 公证**，从网络取得的副本可能被 Gatekeeper 拦截，不建议公开分发。已验证范围与源码构建说明见 [macOS 桌面交付说明](desktop/README.md)。
+
+## 源码网页运行
 
 ## 依赖
 
@@ -163,7 +178,7 @@ python3 studio/scripts/check.py
 
 | 文件 | 原因 |
 |---|---|
-| `studio/settings.json`、`settings.*.json` | 你的 GCP 项目 ID |
+| `studio/settings.json`、`settings.*.json` | 本机服务和模型偏好 |
 | `studio/projects.json` | 本机文件夹路径 |
 | `.venv/`、`__pycache__/` | 环境 |
 | 任何套图 PNG / 内容工程 | 内容不属于本工具仓 |
@@ -173,10 +188,10 @@ python3 studio/scripts/check.py
 ## 常见问题
 
 **测试鉴权失败**  
-ADC 未登录、项目 ID 填错、未开通 Vertex AI 或未绑定结算。再跑 `gcloud auth application-default login`。
+确认 Key 的服务来源、API 限制、结算与模型权限；在设置中选择正确来源后重试。不再使用 ADC 或 gcloud 登录。
 
 **出图 403 / 空图**  
-当前账号对所选出图模型没有权限。在 Vertex 设定里核对模型名与区域。
+当前 Key 对所选模型没有权限，或配额不足。在 API Key 设置中核对服务来源与模型 ID。
 
 **打开工坊没有工程**  
 必须先新建/打开一个空内容文件夹。

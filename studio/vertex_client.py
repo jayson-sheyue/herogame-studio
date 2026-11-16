@@ -17,9 +17,10 @@ from google.genai import types
 
 import api_credentials
 from storage import write_json
+from runtime_paths import data_root
 
 log = logging.getLogger("studio.ai")
-ROOT = Path(__file__).resolve().parent
+ROOT = data_root()
 SETTINGS_PATH = ROOT / "settings.json"
 DEFAULT_TEXT_MODEL = "gemini-3.8-flash"
 DEFAULT_IMAGE_MODEL = "gemini-2.5-flash-image"

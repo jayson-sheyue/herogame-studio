@@ -18,6 +18,7 @@ def main() -> int:
         [sys.executable, "-m", "unittest", "discover", "-s", str(studio), "-v"],
         [node, "--check", str(studio / "static" / "app.js")],
         [node, "--test", str(studio / "test_frontend.cjs")],
+        [node, "--test", str(studio.parent / "desktop" / "test_bridge.cjs")],
     ]
     for command in commands:
         result = subprocess.run(command, cwd=studio.parent, check=False)

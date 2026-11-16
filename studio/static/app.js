@@ -5871,6 +5871,11 @@ async function downloadContentPack(body, statusText) {
   const disp = res.headers.get("Content-Disposition") || "";
   const match = disp.match(/filename="([^"]+)"/i);
   if (match) filename = match[1];
+  if (window.HeroStudioDesktop) {
+    const saved = await window.HeroStudioDesktop.saveBlob(blob, filename);
+    setStatus(saved ? "已保存数据包。可导入对战端。" : "已取消保存。工程和已生成的内容仍然保留。", saved ? "ok" : "");
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -7386,6 +7391,13 @@ window.addEventListener("resize", () => {
 window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") setInboxOpen(false);
 });
+window.studioDesktopCloseState = () => {
+  persistSession();
+  return {
+    busy: inboxTasks.some((task) => task.status === "wait") || JOBS.keys.size > 0 || JOBS.batches.size > 0,
+    dirty: Boolean(portraitSaveInFlight || portraitDirty.prompts.size || portraitDirty.blueprints.size || portraitDirty.fields.size || $("apiKey")?.value),
+  };
+};
 window.addEventListener("beforeunload", (event) => {
   persistSession();
   if (portraitSaveInFlight || portraitDirty.prompts.size || portraitDirty.blueprints.size || portraitDirty.fields.size) {

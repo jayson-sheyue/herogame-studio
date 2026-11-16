@@ -302,3 +302,31 @@ test('unsaved key blocks generation with an actionable message before any reques
   await assert.rejects(app.run('api("/api/style/generate",{method:"POST",body:"{}"})'),/尚未保存/);
   assert.equal(called,false);
 });
+
+test('desktop quit reports unsaved edits, pending key and active tasks', () => {
+  const app = studio();
+  app.run('persistSession = () => {}');
+  assert.equal(app.run('window.studioDesktopCloseState().dirty'), true);
+  app.run('portraitDirty.prompts.clear()');
+  assert.equal(app.run('window.studioDesktopCloseState().dirty'), false);
+  app.fields.set('apiKey', {value:'placeholder'});
+  assert.equal(app.run('window.studioDesktopCloseState().dirty'), true);
+  app.fields.set('apiKey', {value:''});
+  app.run('JOBS.keys.add("running")');
+  assert.equal(app.run('window.studioDesktopCloseState().busy'), true);
+});
+
+test('desktop export waits for native save and cancellation is not success', async () => {
+  for (const saved of [false, true]) {
+    const app = studio();
+    const pending = deferred();
+    app.sandbox.workspaceFetch = async () => ({ok:true,blob:async () => ({}),headers:{get:()=>'attachment; filename="sample.hgpk.zip"'}});
+    app.sandbox.window.HeroStudioDesktop = {saveBlob:() => pending.promise};
+    const exporting = app.run('downloadContentPack({hero_ids:["sample"]})');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.statuses.some(item => item[1] === 'ok'), false);
+    pending.resolve(saved); await exporting;
+    assert.match(app.statuses.at(-1)[0], saved ? /已保存/ : /已取消保存/);
+    assert.equal(app.statuses.at(-1)[1], saved ? 'ok' : '');
+  }
+});
