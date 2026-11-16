@@ -7,6 +7,26 @@ const vm = require('node:vm');
 
 const source = readFileSync(join(__dirname, 'static/app.js'), 'utf8');
 
+test('opening the HTML file shows startup help without starting the app script', () => {
+  const html = readFileSync(join(__dirname, 'static/index.html'), 'utf8');
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
+  for (const protocol of ['file:', 'http:']) {
+    const appended = [];
+    const document = {documentElement:{dataset:{}}, createElement:() => ({}), body:{append:el => appended.push(el)}};
+    const context = vm.createContext({document, location:{protocol}});
+    for (const script of scripts) vm.runInContext(script, context);
+    if (protocol === 'file:') {
+      assert.equal(document.documentElement.dataset.launchMode, 'file');
+      assert.deepEqual(appended, []);
+      assert.match(html, /href="http:\/\/127\.0\.0\.1:8787\/"/);
+    } else {
+      assert.equal(document.documentElement.dataset.launchMode, undefined);
+      assert.equal(appended.length, 1);
+      assert.match(appended[0].src, /^\/static\/app\.js\?v=/);
+    }
+  }
+});
+
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });

@@ -55,12 +55,14 @@ python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python3 -m pip install -U pip
 python3 -m pip install -r requirements.txt
-python3 server.py
+python3 launch.py
 ```
 
-终端出现 Uvicorn 监听后，浏览器打开：**http://127.0.0.1:8787**
+服务就绪后会自动打开浏览器：**http://127.0.0.1:8787**。如果未自动打开，手动访问该地址。
 
-只监听本机。停掉：`Ctrl+C`。端口被占用时先结束旧的 `server.py`。
+macOS 完成首次安装后，也可直接双击仓库根目录的 `start.command`；它优先使用 `studio/.venv`，无需每次手动激活。服务已运行时会打开已有服务；被其他程序占用的端口会提示处理，不会自动结束其他进程。
+
+**不要双击 `studio/static/index.html` 来使用工坊**：`file://` 页面无法连接后端，直接打开时只显示启动指引。工坊只监听本机；使用期间保持终端开启，按 `Ctrl+C` 停止本次启动的服务。需要开发热重载时仍可运行 `python3 server.py`。
 
 工坊左侧 **Vertex 设定** 填写你的 GCP 项目 ID，点 **测试鉴权**。通过后写入本机 `settings.json`（不会进 Git）。也可先复制 `settings.example.json` 为 `settings.json` 再改项目 ID。
 

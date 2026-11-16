@@ -4,12 +4,42 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>英灵大乱斗 · 作图工坊</title>
+  <script>
+    if (location.protocol === "file:") document.documentElement.dataset.launchMode = "file";
+  </script>
+  <style>
+    #fileLaunchHelp { display: none; }
+    html[data-launch-mode="file"] { color-scheme: dark; background: #11171b; }
+    html[data-launch-mode="file"] body { margin: 0; padding: 48px 20px; color: #e7ebe7; font: 16px/1.75 system-ui, sans-serif; }
+    html[data-launch-mode="file"] body > :not(#fileLaunchHelp) { display: none !important; }
+    html[data-launch-mode="file"] #fileLaunchHelp { display: block; box-sizing: border-box; max-width: 640px; margin: 8vh auto; padding: 36px; border: 1px solid #35413f; border-radius: 16px; background: #1a2328; }
+    #fileLaunchHelp .launch-mark { color: #d6b578; font-size: 13px; letter-spacing: .15em; }
+    #fileLaunchHelp h1 { font-size: clamp(24px, 5vw, 32px); line-height: 1.35; margin: 12px 0 20px; }
+    #fileLaunchHelp p, #fileLaunchHelp ol { margin: 16px 0; }
+    #fileLaunchHelp ol { padding-left: 24px; }
+    #fileLaunchHelp code { color: #f0d6a6; overflow-wrap: anywhere; }
+    #fileLaunchHelp .launch-link { display: inline-block; margin: 12px 0; padding: 10px 20px; border-radius: 8px; color: #141b1f; background: #d6b578; font-weight: 600; text-decoration: none; }
+    #fileLaunchHelp a:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+    #fileLaunchHelp .launch-note { color: #b2bcb9; font-size: 14px; }
+    @media (max-width: 480px) { html[data-launch-mode="file"] #fileLaunchHelp { margin: 4vh auto; padding: 24px; } }
+  </style>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+SC:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/styles.css?v=60" />
 </head>
 <body data-workspace="style" data-line="" data-gate="1">
+  <section id="fileLaunchHelp" aria-labelledby="fileLaunchTitle">
+    <div class="launch-mark">作图工坊 · 本机启动</div>
+    <h1 id="fileLaunchTitle">请从本机服务进入工坊</h1>
+    <p>你打开了网页源文件。工坊需要本机服务来读取工程、保存作品和连接 Vertex AI。</p>
+    <ol>
+      <li>在项目根目录双击 <code>start.command</code>（macOS），等待浏览器自动打开。</li>
+      <li>使用期间保持启动终端开启；结束时按 <code>Ctrl+C</code>。</li>
+    </ol>
+    <a class="launch-link" href="http://127.0.0.1:8787/">打开本机工坊 ↗</a>
+    <p class="launch-note">上面的按钮适用于服务已启动时。首次使用请先按项目 README 安装依赖；Windows / Linux 可在已激活虚拟环境的终端运行 <code>python launch.py</code>（位于 studio 目录）。</p>
+  </section>
   <div id="lineGate" class="line-gate" hidden>
     <div class="line-gate-card">
       <h1>作图工坊</h1>
@@ -557,6 +587,12 @@
     </div>
   </dialog>
 
-  <script src="/static/app.js?v=101"></script>
+  <script>
+    if (location.protocol !== "file:") {
+      const appScript = document.createElement("script");
+      appScript.src = "/static/app.js?v=101";
+      document.body.append(appScript);
+    }
+  </script>
 </body>
 </html>
