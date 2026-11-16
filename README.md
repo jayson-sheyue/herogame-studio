@@ -1,5 +1,7 @@
 # 作图工坊
 
+<img src="studio/static/brand-icon.svg" width="80" height="80" alt="作图工坊：铜金色立体像素 H 标识" />
+
 本地像素资产工坊，支持 macOS 桌面客户端与源码网页运行：用自己的 Vertex AI Express / Google AI Studio API Key 制作像素格斗套图和桌宠立绘（提示词 → 出图 → 切分 → 入库或导出）。**不含对战游戏。**
 
 公开仓库：<https://github.com/jayson-sheyue/herogame-studio>  
@@ -11,7 +13,7 @@
 
 ## macOS 客户端（测试版）
 
-从 [GitHub 测试版发布页](https://github.com/jayson-sheyue/herogame-studio/releases/tag/v0.1.0-beta.2) 下载。Apple Silicon（M 系列芯片）／macOS 15 或更高版本：打开 `HeroGameStudio-0.1.0-beta.2-macOS-arm64.dmg`，将 **作图工坊.app** 拖入 **Applications** 后启动。内置 Python、依赖和本地服务，无需安装 Python、Node 或 gcloud，也不必保持终端开启。选择产品线与工程文件夹后，在 **API Key 设置**中输入自己的密钥。
+从 [GitHub 测试版发布页](https://github.com/jayson-sheyue/herogame-studio/releases/tag/v0.1.0-beta.3) 下载。Apple Silicon（M 系列芯片）／macOS 15 或更高版本：打开 `HeroGameStudio-0.1.0-beta.3-macOS-arm64.dmg`，将 **作图工坊.app** 拖入 **Applications** 后启动。内置 Python、依赖和本地服务，无需安装 Python、Node 或 gcloud，也不必保持终端开启。选择产品线与工程文件夹后，在 **API Key 设置**中输入自己的密钥。
 
 客户端使用原生 macOS 窗口、文件选择和保存对话框；关闭窗口即退出，任务或未保存修改会先提示。下载取消不会显示保存成功；客户端退出后只停止自己启动的服务，不影响原有网页服务。
 

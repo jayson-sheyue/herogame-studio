@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0-beta.2",
-  "build": "2",
+  "version": "0.1.0-beta.3",
+  "build": "3",
   "bundle_id": "com.sheyue.herogamestudio",
   "minimum_macos": "15.0"
 }

@@ -54,16 +54,11 @@ button, input, textarea, select { font-family: inherit; }
   border-right: 1px solid var(--line);
 }
 .mark {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  background: var(--accent);
-  color: #1a1208;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0;
-  border-radius: var(--radius);
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: block;
+  object-fit: contain;
 }
 .menubar h1 {
   margin: 0;
@@ -1756,10 +1751,14 @@ dialog.body-scale-dlg:not([open]) { display: none; }
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
 }
 .line-gate-card h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 8px;
   font-size: 22px;
   font-weight: 600;
 }
+.gate-mark { flex: 0 0 48px; }
 .line-gate-lead {
   margin: 0 0 18px;
   color: var(--muted);
@@ -1800,8 +1799,6 @@ dialog.body-scale-dlg:not([open]) { display: none; }
 body[data-gate="1"] .workspace,
 body[data-gate="1"] .menubar .tabs,
 body[data-gate="1"] #switchLineBtn { visibility: hidden; }
-body[data-line="deskpet"] .menubar .mark { background: #3d5a4a; }
-body[data-line="herogame"] .menubar .mark { background: #4a3d2e; }
 
 .portrait-slot-picker {
   display: flex;

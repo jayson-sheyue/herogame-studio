@@ -1,4 +1,4 @@
-作图工坊 0.1.0-beta.2 · Apple Silicon 测试版
+作图工坊 0.1.0-beta.3 · Apple Silicon 测试版
 
 系统：Apple Silicon（M 系列芯片），macOS 15 或更高版本。
 

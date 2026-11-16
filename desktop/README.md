@@ -1,6 +1,6 @@
 # macOS 桌面客户端
 
-定位：个人／小范围手动分发，无 OTA；当前测试版 `0.1.0-beta.2`（构建号 `2`），Apple Silicon、macOS 15+。原生 AppKit + WKWebView 窗口，PyInstaller onedir 携带 Python 服务及依赖；系统 WebKit 无需额外下载。
+定位：个人／小范围手动分发，无 OTA；当前测试版 `0.1.0-beta.3`（构建号 `3`），Apple Silicon、macOS 15+。原生 AppKit + WKWebView 窗口，PyInstaller onedir 携带 Python 服务及依赖；系统 WebKit 无需额外下载。
 
 ## 构建
 
@@ -16,11 +16,13 @@ studio/.venv/bin/python desktop/build.py
 
 PyInstaller 随附的 certifi/gRPC 公共信任根经 X.509 解析验证后，以 `.crt` 名称携带，内容字节保持原样；runtime hook 指向这些公共资源。私钥与用户凭据不进入打包目录，TLS 验证保持启用。发布前仍需执行 skill 的 secret guard（有该 skill 时构建脚本自动执行），不能跳过。
 
+图标采用原创的铜金色立体像素 H。网页页签、顶部品牌、产品线选择页和客户端共用 `studio/static/brand-icon.svg`；`desktop/make_icon.py` 通过系统 AppKit 渲染该矢量源，再生成含多尺寸的 ICNS，不需要下载图片或增加运行时依赖。
+
 ```bash
 studio/.venv/bin/python desktop/smoke.py 'build/macos/作图工坊.app/Contents/Resources/backend/studio-service'
 'build/macos/作图工坊.app/Contents/Resources/backend/studio-service' --self-check
 codesign --verify --deep --strict 'build/macos/作图工坊.app'
-hdiutil verify dist/HeroGameStudio-0.1.0-beta.2-macOS-arm64.dmg
+hdiutil verify dist/HeroGameStudio-0.1.0-beta.3-macOS-arm64.dmg
 studio/.venv/bin/python desktop/smoke.py 'build/macos/作图工坊.app/Contents/Resources/backend/studio-service' --upgrade-from '/绝对路径/旧版.app/Contents/Resources/backend/studio-service'
 ```
 

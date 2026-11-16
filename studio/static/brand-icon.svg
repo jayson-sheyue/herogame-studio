@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="case" x1="160" y1="64" x2="820" y2="960" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#31494b"/><stop offset=".48" stop-color="#1a3035"/><stop offset="1" stop-color="#101e26"/>
+    </linearGradient>
+    <linearGradient id="left" x1="270" y1="352" x2="422" y2="828" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe5ae"/><stop offset=".55" stop-color="#f4bb64"/><stop offset="1" stop-color="#dc8b33"/>
+    </linearGradient>
+    <linearGradient id="bridge" x1="422" y1="454" x2="602" y2="632" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffd88e"/><stop offset="1" stop-color="#e9a04a"/>
+    </linearGradient>
+    <linearGradient id="right" x1="602" y1="306" x2="754" y2="738" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffc675"/><stop offset="1" stop-color="#de7c36"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="602" y1="186" x2="754" y2="358" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff2c7"/><stop offset="1" stop-color="#ffd088"/>
+    </linearGradient>
+  </defs>
+  <rect x="72" y="88" width="880" height="880" rx="202" fill="#040c12" opacity=".3"/>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#case)"/>
+  <rect x="66" y="66" width="892" height="892" rx="206" fill="none" stroke="#c5ded3" stroke-opacity=".2" stroke-width="3"/>
+  <path d="M185 745V282c0-54 43-97 97-97h370" fill="none" stroke="#b6d4c9" stroke-opacity=".06" stroke-width="2"/>
+  <g fill="#020d14" opacity=".5" transform="translate(6 38)">
+    <path d="M270 428 422 352V484L602 394V382L754 306V662L602 738V542L422 632V752L270 828Z"/>
+    <path d="M602 262 754 186V282L602 358Z"/>
+  </g>
+  <g fill="#a8542a">
+    <path d="M270 428 422 352 446 376V508L626 418V406L778 330V686L626 762V566L446 656V776L294 852 270 828Z"/>
+    <path d="M602 262 754 186 778 210V306L626 382 602 358Z"/>
+  </g>
+  <path d="M270 428 422 352V752L270 828Z" fill="url(#left)"/>
+  <path d="M422 484 602 394V542L422 632Z" fill="url(#bridge)"/>
+  <path d="M602 382 754 306V662L602 738Z" fill="url(#right)"/>
+  <path d="M602 262 754 186V282L602 358Z" fill="url(#spark)"/>
+  <g fill="none" stroke="#fff4cb" stroke-width="4" stroke-linejoin="round">
+    <path d="M272 430 420 356V482" opacity=".85"/>
+    <path d="M424 486 600 398" opacity=".6"/>
+    <path d="M604 384 752 310V414" opacity=".7"/>
+    <path d="M604 264 752 190V280" opacity=".85"/>
+  </g>
+  <path d="M270 428 286 436V802L270 828Z" fill="#fff0bf" opacity=".14"/>
+</svg>

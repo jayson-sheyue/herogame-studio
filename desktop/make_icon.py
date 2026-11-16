@@ -1,15 +1,37 @@
-"""Original code-drawn icon; no downloaded assets or user artwork."""
+"""Render the shared original SVG to all macOS icon sizes with AppKit."""
 from pathlib import Path
+import subprocess
 import sys
-from PIL import Image, ImageDraw
+import tempfile
 
-image = Image.new("RGBA", (1024, 1024))
-draw = ImageDraw.Draw(image)
-draw.rounded_rectangle((30, 30, 994, 994), radius=220, fill="#141a23", outline="#455260", width=12)
-draw.rounded_rectangle((174, 174, 850, 850), radius=115, fill="#efb455")
-# Pixel canvas plus pencil: visible even at Dock sizes.
-for x, y in [(285, 285), (435, 285), (285, 435), (435, 435)]:
-    draw.rectangle((x, y, x + 110, y + 110), fill="#202936")
-draw.polygon([(485, 690), (700, 475), (778, 553), (563, 768), (470, 785)], fill="#202936")
-draw.polygon([(470, 785), (489, 703), (552, 766)], fill="#fff0d4")
-image.save(Path(sys.argv[1]), format="ICNS")
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "studio/static/brand-icon.svg"
+
+
+def main():
+    target = Path(sys.argv[1])
+    with tempfile.TemporaryDirectory(prefix="studio-icon-") as temporary:
+        raster = Path(temporary) / "icon.png"
+        subprocess.run(["/usr/bin/swift", "-module-cache-path", str(ROOT / "build/macos/swift-cache"),
+                        str(ROOT / "desktop/render_icon.swift"), str(SOURCE), str(raster)], check=True)
+        with Image.open(raster) as source:
+            icon = source.convert("RGBA")
+        if target.suffix.lower() == ".icns":
+            iconset = Path(temporary) / "Studio.iconset"
+            iconset.mkdir()
+            for size in (16, 32, 128, 256, 512):
+                for scale in (1, 2):
+                    pixels = size * scale
+                    suffix = "@2x" if scale == 2 else ""
+                    icon.resize((pixels, pixels), Image.Resampling.LANCZOS).save(
+                        iconset / f"icon_{size}x{size}{suffix}.png")
+            subprocess.run(["/usr/bin/iconutil", "-c", "icns", str(iconset),
+                            "--output", str(target.resolve())], check=True)
+        else:
+            icon.save(target, format="PNG")
+
+
+if __name__ == "__main__":
+    main()
