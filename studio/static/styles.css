@@ -221,7 +221,7 @@ body.style-frozen [data-rail="style"] input {
 }
 .inbox-list li {
   display: grid;
-  grid-template-columns: 42px 1fr;
+  grid-template-columns: 52px 1fr;
   gap: 2px 8px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
@@ -242,6 +242,7 @@ body.style-frozen [data-rail="style"] input {
 }
 .inbox-list li.wait .st { color: var(--cyan); }
 .inbox-list li.ok .st { color: var(--ok); }
+.inbox-list li.partial .st { color: var(--warn); }
 .inbox-list li.bad .st { color: var(--danger); }
 .inbox-list li.empty {
   display: block;
@@ -841,6 +842,10 @@ body[data-workspace="stages"] .thumb { height: 280px; }
   justify-content: center;
   padding-top: 3px;
 }
+.split-guides.is-contour .split-cell {
+  border-style: dashed;
+  opacity: 0.78;
+}
 .split-cell b {
   font-size: 10px;
   line-height: 1;
@@ -868,7 +873,9 @@ body[data-workspace="stages"] .thumb { height: 280px; }
   display: none;
   width: auto;
   height: auto;
-  object-fit: fill;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   background: transparent;
@@ -1357,6 +1364,18 @@ dialog.body-scale-dlg:not([open]) { display: none; }
 }
 .body-scale-frame.is-bad { border-color: var(--warn); }
 .body-scale-frame.is-ok { border-color: #3d6b3d; }
+
+.candidate-picker { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.candidate-picker small { color: var(--muted); }
+.candidate-picker button { width: 54px; height: 42px; padding: 1px; font-size: 11px; overflow: hidden; }
+.candidate-picker button.on { outline: 2px solid var(--accent); }
+.candidate-picker img { display: block; width: 100%; height: 26px; object-fit: cover; background: #00ffff; }
+
+.motion-blueprint { margin: 8px 0; padding: 7px; border: 1px solid var(--line); border-radius: 7px; }
+.motion-blueprint summary { cursor: pointer; font-weight: 600; }
+.motion-blueprint summary small { font-weight: 400; color: var(--muted); }
+.motion-blueprint label { display: block; margin-top: 6px; font-size: 12px; }
+.motion-blueprint input:not([type="checkbox"]) { display: block; width: 100%; margin-top: 3px; }
 .body-scale-frame.on,
 .body-scale-frame.sel {
   border-color: var(--accent);

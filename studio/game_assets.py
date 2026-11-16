@@ -6,6 +6,8 @@ import json
 import shutil
 import time
 from pathlib import Path
+
+from storage import write_json
 from statistics import median
 
 from PIL import Image, ImageDraw, ImageFont
@@ -17,6 +19,7 @@ from score import (
     FRAME_SLOTS,
     SPLIT_VARIANT_COUNT,
     SPLIT_VARIANT_LABELS,
+    FALL_SLOTS,
     air_ground_lifts,
     air_lifts_from_cells,
     cyan_key_image,
@@ -57,8 +60,7 @@ def ensure_dirs() -> None:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json(path, data)
 
 
 def _read_json(path: Path) -> dict:
@@ -104,9 +106,12 @@ def remember_split_source(hero_id: str, slot_id: str, src: Path) -> None:
 
 def next_split_variant(hero_id: str, slot_id: str) -> int:
     data = load_split_layout(hero_id, slot_id)
-    if not data:
-        return 0
-    return (int(data.get("variant") or 0) + 1) % SPLIT_VARIANT_COUNT
+    cur = 0 if not data else int(data.get("variant") or 0)
+    nxt = (cur + 1) % SPLIT_VARIANT_COUNT
+    # 倒地条是单行横条，跳过「2×2 宫格→单行」，避免跟奥义田字格切法抢档。
+    if slot_id in FALL_SLOTS and nxt == 5:
+        nxt = 0
+    return nxt
 
 
 def draft_hero_frames_dir(hero_id: str, slot_id: str) -> Path:
@@ -195,12 +200,25 @@ def clear_split_frames(hero_id: str, slot_id: str) -> None:
         pass
 
 
-def split_strip(src: Path, dest_dir: Path, frames: int, variant: int = 0) -> list[Path]:
+def split_strip(
+    src: Path,
+    dest_dir: Path,
+    frames: int,
+    variant: int = 0,
+    slot_id: str = "",
+    *,
+    scrub: bool = True,
+) -> list[Path]:
     frames = max(1, int(frames))
     raw = Image.open(src).convert("RGBA")
+    # Panel scrubbing is useful for fighting-game sheets, but is destructive
+    # for detailed portrait art (hair strands, translucent dresses and wing
+    # facets can look like divider bars). Portrait callers disable it.
+    if not scrub:
+        im = raw
     # 2×2 宫格不能按「单行等宽缝」擦黑框，否则会切穿画面中央。
-    # 单行四帧（三视图）不是宫格：不要改成 variant 5，否则 pack 会报「看不出 2×2」。
-    if frames == 4 and looks_like_grid_2x2(raw):
+    # 单行四帧（三视图、倒地条）不是宫格：不要改成 variant 5，否则 pack 会报「看不出 2×2」。
+    elif frames == 4 and slot_id not in FALL_SLOTS and looks_like_grid_2x2(raw):
         im = scrub_panel_borders(raw, frames=1)
         variant = 5
     else:
@@ -210,7 +228,7 @@ def split_strip(src: Path, dest_dir: Path, frames: int, variant: int = 0) -> lis
     width, height = im.size
     if width < 2 or height < 2:
         raise ValueError("图片太小，切不了。")
-    _sheet, frame_ims, layout = pack_uniform_strip(im, frames, variant=variant)
+    _sheet, frame_ims, layout = pack_uniform_strip(im, frames, variant=variant, slot_id=slot_id)
     dest_dir.mkdir(parents=True, exist_ok=True)
     for old in dest_dir.glob("*.png"):
         old.unlink()
@@ -258,14 +276,14 @@ def assemble_split_sheet(hero_id: str, slot_id: str) -> Image.Image:
     return sheet
 
 
-def prepare_sprite_sheet(src: Path, frames: int, variant: int = 0) -> Image.Image:
-    """Rebuild a strip so every cell is as wide as the widest pose (lying down, full extension, etc.)."""
+def prepare_sprite_sheet(src: Path, frames: int, variant: int = 0, slot_id: str = "") -> Image.Image:
+    """Rebuild a strip so every cell is as wide as the widest pose (full extension, etc.)."""
     im = Image.open(src).convert("RGBA")
     frames = max(1, int(frames))
     if frames <= 1:
         return im
     im = scrub_panel_borders(im, frames=frames)
-    sheet, _, _ = pack_uniform_strip(im, frames, variant=variant)
+    sheet, _, _ = pack_uniform_strip(im, frames, variant=variant, slot_id=slot_id)
     return sheet
 
 
@@ -793,7 +811,7 @@ def remove_stage(stage_id: str) -> None:
     refresh_index()
 
 
-SKIP_HEROES = {"nurhaci_13_armors", "id_1786855456", "id_1786858227"}
+SKIP_HEROES = {"nurhaci_13_armors", "id_1786855456", "id_1786858227", "id_1786873022"}
 
 DEFAULT_STAGE_COLLISION = {
     "floors": [{"x": 0, "y": 0.84, "w": 1, "h": 0.06}],
@@ -1119,10 +1137,36 @@ def measure_hero_ref_body(hero_id: str, ref_slot: str = "idle") -> dict:
     }
 
 
+def equal_width_cell_layout(width: int, height: int, n: int) -> list[dict]:
+    """Normalized + pixel boxes for an equal-width 1-row strip (body-scale / playback)."""
+    frames = max(1, int(n))
+    w = max(1, int(width))
+    h = max(1, int(height))
+    fw = max(1, w // frames)
+    cells: list[dict] = []
+    for i in range(frames):
+        x0 = i * fw
+        x1 = w if i == frames - 1 else min(w, (i + 1) * fw)
+        wpx = max(1, x1 - x0)
+        cells.append(
+            {
+                "x": x0 / w,
+                "y": 0.0,
+                "w": wpx / w,
+                "h": 1.0,
+                "px": {"x": x0, "y": 0, "w": wpx, "h": h},
+            }
+        )
+    return cells
+
+
 def ensure_committed_equal_frames(hero_id: str, slot_id: str, *, force: bool = False) -> list[Path]:
     """
-    Ensure draft split frames exist for body-scale review.
-    Prefer equal-width slices of the *committed* game strip (not generative re-pack).
+    Frames for body-scale review.
+
+    Prefer the same split PNGs the card already shows. Opening the workspace
+    must not re-scrub / re-pack the committed game strip — that strip is often
+    already packed, and a second gutter pass punches cyan holes through belts.
     """
     dest = draft_hero_frames_dir(hero_id, slot_id)
     path = committed_hero_png(hero_id, slot_id)
@@ -1131,12 +1175,17 @@ def ensure_committed_equal_frames(hero_id: str, slot_id: str, *, force: bool = F
     n = _hero_slot_frame_count(hero_id, slot_id)
     existing = list_split_frames(hero_id, slot_id)
     if existing and len(existing) == n and not force:
+        meta_path = dest / "cells.json"
+        source = ""
         try:
-            newest_frame = max(p.stat().st_mtime for p in existing)
-            if newest_frame >= path.stat().st_mtime - 0.05:
-                return existing
-        except OSError:
-            pass
+            meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+            if isinstance(meta, dict):
+                source = str(meta.get("source") or "")
+        except Exception:  # noqa: BLE001
+            source = ""
+        # Card「一键切分」frames: reuse even if 入库 wrote a newer game PNG.
+        if source != "body_scale_workspace":
+            return existing
 
     im = Image.open(path).convert("RGBA")
     w, h = im.size
@@ -1155,7 +1204,7 @@ def ensure_committed_equal_frames(hero_id: str, slot_id: str, *, force: bool = F
         "expected": n,
         "split_frames": n,
         "applied": True,
-        "cells": [],
+        "cells": equal_width_cell_layout(w, h, n),
         "source": "body_scale_workspace",
     }
     (dest / "cells.json").write_text(json.dumps(meta), encoding="utf-8")
@@ -1476,8 +1525,18 @@ def save_body_scale_slot(
 
     dest_dir = draft_hero_frames_dir(hero_id, slot_id)
     dest_dir.mkdir(parents=True, exist_ok=True)
+    # The card player fits each split PNG independently. Persist the same
+    # fixed-size canvases used by the rebuilt strip, otherwise a correctly
+    # aligned workspace preview can jump or shrink in the draft-card player.
+    fw = max(im.size[0] for im in rebuilt)
+    fh = max(im.size[1] for im in rebuilt)
+    canonical: list[Image.Image] = []
+    for im in rebuilt:
+        cell_canvas = Image.new("RGBA", (fw, fh), CYAN_FILL)
+        cell_canvas.paste(im, ((fw - im.size[0]) // 2, 0), im)
+        canonical.append(cell_canvas)
     tmp_paths: list[Path] = []
-    for i, placed in enumerate(rebuilt):
+    for i, placed in enumerate(canonical):
         tmp = dest_dir / f".body_scale_tmp_{i:02d}.png"
         placed.save(tmp, format="PNG")
         tmp_paths.append(tmp)
@@ -1490,12 +1549,8 @@ def save_body_scale_slot(
         final = dest_dir / f"{i:02d}.png"
         tmp.replace(final)
 
-    fw = max(im.size[0] for im in rebuilt)
-    fh = max(im.size[1] for im in rebuilt)
     sheet = Image.new("RGBA", (fw * len(rebuilt), fh), CYAN_FILL)
-    for i, im in enumerate(rebuilt):
-        cell_canvas = Image.new("RGBA", (fw, fh), CYAN_FILL)
-        cell_canvas.paste(im, ((fw - im.size[0]) // 2, 0), im)
+    for i, cell_canvas in enumerate(canonical):
         sheet.paste(cell_canvas, (i * fw, 0))
 
     dest = game_hero_png(hero_id, slot_id)

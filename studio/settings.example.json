@@ -1,7 +1,6 @@
 {
-  "project": "YOUR_GCP_PROJECT_ID",
-  "location": "global",
-  "image_location": "global",
-  "text_model": "gemini-2.5-flash",
-  "image_model": "gemini-2.5-flash-image"
+  "provider": "auto",
+  "text_model": "gemini-3.8-flash",
+  "image_model": "gemini-2.5-flash-image",
+  "key_storage": "session"
 }

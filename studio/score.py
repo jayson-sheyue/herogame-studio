@@ -14,9 +14,9 @@ FRAME_SLOTS = {
     "walk": 5,
     "dash": 5,
     "guard": 5,
-    "hurt": 5,
+    "hurt": 4,
     "jump": 5,
-    "air_hurt": 5,
+    "air_hurt": 4,
     "air_attack": 5,
     "attack": 5,
     "attack_up": 5,
@@ -27,7 +27,7 @@ FRAME_SLOTS = {
     "combo": 5,
     "super": 5,
     "opening_cg": 5,
-    "defeat_cg": 5,
+    "defeat_cg": 4,
     "win_cg": 5,
     "fx_skill": 4,
     "fx_combo_up": 4,
@@ -85,7 +85,21 @@ def _is_bg(r: int, g: int, b: int, a: int) -> bool:
         return True
     mx, mn = max(r, g, b), min(r, g, b)
     sat = (mx - mn) / mx if mx else 0
-    return g > 140 and b > 140 and r < 90 and sat > 0.35 and (g - r) > 40 and (b - r) > 40
+    if g > 140 and b > 140 and r < 90 and sat > 0.35 and (g - r) > 40 and (b - r) > 40:
+        return True
+    # Model-drawn cell bars are often washed cyan-white (#D6FFFF), not #FFF or #00FFFF.
+    return _is_pale_cyan_bar(r, g, b, a)
+
+
+def _is_pale_cyan_bar(r: int, g: int, b: int, a: int = 255) -> bool:
+    """Near-white cyan gutter stroke that survives both chroma-key and white-bar scrub."""
+    if a < 10:
+        return False
+    if r < 165 or g < 225 or b < 225:
+        return False
+    if abs(g - b) > 24:
+        return False
+    return min(g, b) - r >= 28
 
 
 def _open(png: bytes) -> Image.Image:
@@ -365,10 +379,14 @@ def is_key_cyan(r: int, g: int, b: int, a: int) -> bool:
     """True for chroma-key screen #00FFFF, teal leftovers, and cyan fringe — not gold/white/red FX."""
     if a < 12:
         return True
+    if _is_pale_cyan_bar(r, g, b, a):
+        return True
     if r >= 125:
         return False
     gb = min(g, b)
-    if gb < 100:
+    # Darker teal/emerald is a legitimate costume and wing colour.  Treat only
+    # bright cyan-family pixels as removable screen/fringe candidates.
+    if gb < 160:
         return False
     if gb <= r + 24:
         return False
@@ -381,6 +399,19 @@ def is_key_cyan(r: int, g: int, b: int, a: int) -> bool:
     return True
 
 
+def is_key_cyan_seed(r: int, g: int, b: int, a: int) -> bool:
+    """Conservative edge seed for chroma flood-fill.
+
+    ``is_key_cyan`` intentionally accepts a wider cyan fringe.  It must not
+    decide where a flood begins, otherwise a teal costume touching the canvas
+    edge can be mistaken for background.  The seed accepts only transparency,
+    the near-white divider bars, and unmistakable bright cyan screen pixels.
+    """
+    if a < 12 or _is_pale_cyan_bar(r, g, b, a):
+        return True
+    return r <= 72 and g >= 178 and b >= 178 and abs(g - b) <= 54
+
+
 def cyan_key_png(
     png_bytes: bytes,
     frames: int = 1,
@@ -388,7 +419,7 @@ def cyan_key_png(
     *,
     scrub: bool = True,
 ) -> bytes:
-    """Flood-key #00FFFF (and fringe) to alpha 0. Used before writing game hero strips.
+    """Flood-key only #00FFFF connected to the outside canvas.
 
     scrub: erase model-drawn black/white comic gutters before keying. Disable for
     already-packed studio rebuilds (body-scale / unify) — scrub can punch holes
@@ -407,7 +438,7 @@ def cyan_key_png(
     q: deque[tuple[int, int]] = deque()
 
     def seed(x: int, y: int) -> None:
-        if not kill[y][x] and screen[y][x]:
+        if not kill[y][x] and screen[y][x] and is_key_cyan_seed(*pix[x, y]):
             kill[y][x] = True
             q.append((x, y))
 
@@ -431,7 +462,10 @@ def cyan_key_png(
 
     while q:
         x, y = q.popleft()
-        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+        for nx, ny in (
+            (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1),
+            (x - 1, y - 1), (x + 1, y - 1), (x - 1, y + 1), (x + 1, y + 1),
+        ):
             if 0 <= nx < w and 0 <= ny < h and not kill[ny][nx] and screen[ny][nx]:
                 kill[ny][nx] = True
                 q.append((nx, ny))
@@ -442,57 +476,9 @@ def cyan_key_png(
                 r, g, b, a = pix[x, y]
                 pix[x, y] = (r, g, b, 0)
 
-    # Enclosed cyan islands (dust, foot specks) never touch the screen flood.
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = pix[x, y]
-            if a >= 12 and is_key_cyan(r, g, b, a):
-                pix[x, y] = (r, g, b, 0)
-
-    min_touch = 3 if strict else 4
-    marked: list[tuple[int, int]] = []
-    for y in range(1, h - 1):
-        for x in range(1, w - 1):
-            r, g, b, a = pix[x, y]
-            if a < 16:
-                continue
-            cyan = min(g, b) - r
-            if cyan < (8 if strict else 18) or r >= (150 if strict else 130):
-                continue
-            t = 0
-            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)):
-                if pix[x + dx, y + dy][3] < 16:
-                    t += 1
-            if t >= min_touch:
-                marked.append((x, y))
-    for x, y in marked:
-        r, g, b, a = pix[x, y]
-        pix[x, y] = (r, g, b, 0)
-
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = pix[x, y]
-            if a < 16:
-                continue
-            neigh = False
-            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < w and 0 <= ny < h and pix[nx, ny][3] < 16:
-                    neigh = True
-                    break
-            if not neigh:
-                continue
-            cyan = min(g, b) - r
-            if cyan <= (6 if strict else 12) or r >= (130 if strict else 110):
-                continue
-            factor = min(1.0, cyan / (120 if strict else 180))
-            fade = 0.55 if strict else 0.35
-            pix[x, y] = (
-                r,
-                max(0, int(g - cyan * (0.95 if strict else 0.85))),
-                max(0, int(b - cyan * (0.95 if strict else 0.85))),
-                int(a * (1 - fade * factor)),
-            )
+    # Do not delete cyan enclosed by the subject. Wing facets, gems and
+    # translucent fabric can legitimately use teal/mint; only edge-connected
+    # colour is unambiguously background.
 
     out = BytesIO()
     im.save(out, format="PNG")
@@ -531,9 +517,11 @@ def _is_panel_ink(r: int, g: int, b: int, a: int = 255) -> bool:
 
 
 def _is_panel_white(r: int, g: int, b: int, a: int = 255) -> bool:
-    """Near-white comic gutters (models sometimes stroke #FFF bars that survive cyan-key)."""
+    """Near-white comic gutters (models sometimes stroke #FFF / washed-cyan bars)."""
     if a < 10:
         return False
+    if _is_pale_cyan_bar(r, g, b, a):
+        return True
     if r < 210 or g < 210 or b < 210:
         return False
     return abs(r - g) <= 28 and abs(g - b) <= 28 and abs(r - b) <= 28
@@ -851,6 +839,85 @@ def _gutter_thresh(height: int, expected: int) -> int:
     return max(2, int(height * 0.025))
 
 
+def _clear_vertical_panel_gutters(
+    mask: list[list[bool]],
+    im: Image.Image,
+    expected: int,
+) -> list[list[bool]]:
+    """Drop model-drawn white/black cell bars from the figure mask.
+
+    Those bars glue neighbors together and pin equal-width cuts. Props that
+    cross the bar (ties, capes, blades) must stay with the body they grow from.
+    """
+    expected = max(1, int(expected or 1))
+    height = len(mask)
+    width = len(mask[0]) if height else 0
+    if width < 16 or height < 8 or expected < 2:
+        return mask
+    pix = im.convert("RGBA").load()
+    out = [row[:] for row in mask]
+    # Scan the whole strip: model gutters are often a few px off equal-width cuts.
+    for x in range(width):
+        panel_n = 0
+        cyan_flank = 0
+        for y in range(height):
+            r, g, b, a = pix[x, y]
+            if not (_is_panel_white(r, g, b, a) or _is_panel_ink(r, g, b, a)):
+                continue
+            panel_n += 1
+            left = x == 0 or _is_bg(*pix[x - 1, y])
+            right = x + 1 >= width or _is_bg(*pix[x + 1, y])
+            if left or right:
+                cyan_flank += 1
+        if panel_n < max(8, int(height * 0.18)) or cyan_flank < max(6, int(panel_n * 0.45)):
+            continue
+        for y in range(height):
+            r, g, b, a = pix[x, y]
+            if _is_panel_white(r, g, b, a):
+                out[y][x] = False
+                continue
+            if not _is_panel_ink(r, g, b, a):
+                continue
+            left = x == 0 or _is_bg(*pix[x - 1, y])
+            right = x + 1 >= width or _is_bg(*pix[x + 1, y])
+            if left or right:
+                out[y][x] = False
+    return out
+
+
+def _erase_fullheight_panel_bars(im: Image.Image) -> Image.Image:
+    """Paint leftover full-height white/black cell bars cyan. Skips shirts (not a full column)."""
+    out = im.convert("RGBA").copy()
+    w, h = out.size
+    if w < 8 or h < 8:
+        return out
+    pix = out.load()
+    need = max(12, int(h * 0.65))
+    for x in range(w):
+        panel_n = 0
+        cyan_flank = 0
+        for y in range(h):
+            r, g, b, a = pix[x, y]
+            if not (_is_panel_white(r, g, b, a) or _is_panel_ink(r, g, b, a)):
+                continue
+            panel_n += 1
+            left = x == 0 or _is_bg(*pix[x - 1, y])
+            right = x + 1 >= w or _is_bg(*pix[x + 1, y])
+            if left or right:
+                cyan_flank += 1
+        if panel_n < need or cyan_flank < max(8, int(panel_n * 0.4)):
+            continue
+        for y in range(h):
+            r, g, b, a = pix[x, y]
+            if _is_panel_white(r, g, b, a) or (
+                _is_panel_ink(r, g, b, a)
+                and (x == 0 or _is_bg(*pix[x - 1, y]))
+                and (x + 1 >= w or _is_bg(*pix[x + 1, y]))
+            ):
+                pix[x, y] = CYAN_FILL
+    return out
+
+
 def _drop_hairlines(mask: list[list[bool]]) -> list[list[bool]]:
     """Clear a 1px ground line that would otherwise glue an entire row of figures."""
     height = len(mask)
@@ -982,10 +1049,10 @@ def _attach_orphans(mask: list[list[bool]], labels: list[list[int]], peaks: list
 def label_strip_figures(im: Image.Image, layout: dict) -> list[list[int]]:
     """Body cores first, then guns/canes/FX grow from the body they touch — not from the nearest X peak."""
     rgba = im.convert("RGBA")
-    mask = _drop_hairlines(_fg_mask(rgba))
+    expected = max(1, int(layout.get("expected") or len(layout.get("cells") or []) or 1))
+    mask = _clear_vertical_panel_gutters(_drop_hairlines(_fg_mask(rgba)), rgba, expected)
     height = len(mask)
     width = len(mask[0]) if height else 0
-    expected = max(1, int(layout.get("expected") or len(layout.get("cells") or []) or 1))
     labels = [[-1] * width for _ in range(height)]
     if width < 2 or height < 2:
         return labels
@@ -1020,9 +1087,20 @@ def label_strip_figures(im: Image.Image, layout: dict) -> list[list[int]]:
         x, y = q.popleft()
         owner = labels[y][x]
         for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-            if 0 <= nx < width and 0 <= ny < height and mask[ny][nx] and labels[ny][nx] < 0 and core_of[nx] == owner:
-                labels[ny][nx] = owner
-                q.append((nx, ny))
+            if not (0 <= nx < width and 0 <= ny < height and mask[ny][nx] and labels[ny][nx] < 0):
+                continue
+            other = core_of[nx]
+            # Stay out of the neighbor's torso, but follow ties/capes through
+            # unowned columns even after they cross an equal-width gutter.
+            # Knockdown last poses (prone legs) often sit inside the previous
+            # cell's core columns — let the last figure keep connected ink.
+            if other >= 0 and other != owner:
+                last = expected - 1
+                knockdown = bool(layout.get("knockdown"))
+                if not (knockdown and owner == last and other == last - 1):
+                    continue
+            labels[ny][nx] = owner
+            q.append((nx, ny))
     seen = [[False] * width for _ in range(height)]
     for y in range(height):
         for x in range(width):
@@ -1031,7 +1109,50 @@ def label_strip_figures(im: Image.Image, layout: dict) -> list[list[int]]:
                 if blob:
                     _label_extension(mask, labels, blob, peaks)
     _attach_orphans(mask, labels, peaks)
+    if bool(layout.get("knockdown")):
+        _reclaim_knockdown_last(labels, mask, expected, peaks)
     return labels
+
+
+def _reclaim_knockdown_last(
+    labels: list[list[int]],
+    mask: list[list[bool]],
+    expected: int,
+    peaks: list[int],
+) -> None:
+    """Prone legs often sit in the previous cell's X range. Keep them with the last figure.
+
+    Do not steal the previous pose's torso around its peak — only overflow that is
+    already connected to the downed body.
+    """
+    last = expected - 1
+    prev = expected - 2
+    height = len(labels)
+    width = len(labels[0]) if height else 0
+    if expected < 2 or last >= len(peaks) or prev < 0 or width < 8:
+        return
+    prev_peak = peaks[prev] if prev < len(peaks) else 0
+    keep_prev = max(12, int(width / expected * 0.32))
+    q: deque[tuple[int, int]] = deque()
+    for y in range(height):
+        row = labels[y]
+        for x in range(width):
+            if row[x] == last:
+                q.append((x, y))
+    while q:
+        x, y = q.popleft()
+        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if not (0 <= nx < width and 0 <= ny < height and mask[ny][nx]):
+                continue
+            owner = labels[ny][nx]
+            if owner == last:
+                continue
+            if owner >= 0 and owner != prev:
+                continue
+            if owner == prev and abs(nx - prev_peak) <= keep_prev:
+                continue
+            labels[ny][nx] = last
+            q.append((nx, ny))
 
 
 def scrub_foreign_pixels(
@@ -1256,6 +1377,7 @@ def _stack_frame_crops(
         dx = (fw - crop.size[0]) // 2
         dy = (fh - crop.size[1]) // 2
         cell.paste(crop, (dx, dy), crop)
+        cell = _erase_fullheight_panel_bars(cell)
         sheet.paste(cell, (i * fw, 0))
         frames.append(cell)
         packed_cells.append(
@@ -1291,14 +1413,18 @@ def pack_uniform_strip(
     im: Image.Image,
     expected: int,
     variant: int = 0,
+    slot_id: str = "",
 ) -> tuple[Image.Image, list[Image.Image], dict]:
     """Cut a sprite strip into uniform cells. variant cycles different cut styles on the same source."""
     expected = max(1, int(expected or 1))
     variant = int(variant or 0) % SPLIT_VARIANT_COUNT
     src = im.convert("RGBA")
     # Variant 5: unpack 2×2 if the sheet really is a grid. A 1-row 4-frame
-    # turnaround must not raise — 重新切分 used to get stuck on this method.
-    if variant == 5 or (expected == 4 and looks_like_grid_2x2(src)):
+    # turnaround / knockdown strip must not raise — 重新切分 used to get stuck.
+    # Knockdown is always a horizontal strip; never treat it as 奥义田字格.
+    if slot_id in FALL_SLOTS and variant == 5:
+        variant = 0
+    if variant == 5 or (expected == 4 and slot_id not in FALL_SLOTS and looks_like_grid_2x2(src)):
         try:
             return pack_grid_2x2(src, variant=5)
         except ValueError:
@@ -1306,6 +1432,7 @@ def pack_uniform_strip(
                 variant = 2
     width, height = src.size
     layout = detect_strip_cells(src, expected)
+    layout["knockdown"] = slot_id in FALL_SLOTS
     labels = label_strip_figures(src, layout)
 
     if variant in {1, 2}:
@@ -1325,10 +1452,16 @@ def pack_uniform_strip(
                 x0 = int(px.get("x") or 0)
                 x1 = x0 + max(1, int(px.get("w") or width // expected))
                 ranges.append((x0, min(width, x1)))
+        bboxes = figure_bboxes(labels, expected)
+        grow = 6 if variant == 1 else 3
         for i, (x0, x1) in enumerate(ranges):
+            bb = bboxes[i] if i < len(bboxes) else None
+            if bb:
+                x0 = min(x0, bb[0] - grow)
+                x1 = max(x1, bb[2] + grow)
             x0 = max(0, min(width - 1, x0))
             x1 = max(x0 + 1, min(width, x1))
-            crops.append(src.crop((x0, 0, x1, height)))
+            crops.append(scrub_foreign_pixels(src, (x0, 0, x1, height), labels, i))
             boxes.append({"x": x0, "y": 0, "w": x1 - x0, "h": height})
         return _stack_frame_crops(
             crops,
@@ -1382,6 +1515,7 @@ def pack_uniform_strip(
                     dx = dest_x + (x - x0)
                     if 0 <= dx < fw:
                         pix[dx, y] = pix_src[x, y]
+        cell = _erase_fullheight_panel_bars(cell)
         sheet.paste(cell, (i * fw, 0))
         frames.append(cell)
         packed_cells.append(
@@ -1460,7 +1594,9 @@ def _check(cid: str, title: str, score: int, detail: str, weight: int) -> dict:
 def heuristic_score(png: bytes, slot: dict) -> dict:
     slot_id = slot["id"]
     kind = slot.get("kind") or "sprite"
-    expected = FRAME_SLOTS.get(slot_id, 1)
+    # Plans may override a preset (for example walk from 5 to 8 frames).
+    # Validate the requested strip, rather than the stale preset default.
+    expected = max(1, int(slot.get("frames") or FRAME_SLOTS.get(slot_id, 1)))
     im = _open(png)
     w, h = im.size
     mask = _fg_mask(im)
@@ -1708,6 +1844,7 @@ def heuristic_score(png: bytes, slot: dict) -> dict:
         )
     )
 
+    loop_difference = round(_mad(thumbs[0], thumbs[-1]), 2) if len(thumbs) >= 2 else None
     weight_sum = sum(c["weight"] for c in checks) or 1
     pipeline = round(sum(c["score"] * c["weight"] for c in checks) / weight_sum)
     return {
@@ -1718,6 +1855,7 @@ def heuristic_score(png: bytes, slot: dict) -> dict:
             "fg_ratio": round(fg_ratio, 4),
             "expected_frames": expected,
             "found_frames": nonempty,
+            "loop_difference": loop_difference,
         },
     }
 

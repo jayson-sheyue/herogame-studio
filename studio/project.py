@@ -10,6 +10,9 @@ import sys
 import time
 from pathlib import Path
 
+from storage import write_json
+from runtime_paths import data_root
+
 MARKER = "herogame.json"
 KIND_HEROGAME = "herogame"
 KIND_DESKPET = "deskpet"
@@ -19,9 +22,9 @@ VALID_KINDS = (KIND_HEROGAME, KIND_DESKPET)
 TOOL_ROOT = Path(__file__).resolve().parent
 # Never treat the folder that *contains* studio/ as the content project — that is
 # how the fight game (HeroGame) used to get overwritten by 「采用入库」.
-IDLE_ROOT = TOOL_ROOT / ".idle-workspace"
+IDLE_ROOT = data_root() / ".idle-workspace"
 DEFAULT_ROOT = IDLE_ROOT
-REGISTRY_PATH = TOOL_ROOT / "projects.json"
+REGISTRY_PATH = data_root() / "projects.json"
 FIGHT_REFUSE = (
     "这是对战游戏目录，不是作图工程。请打开或新建独立的工坊内容文件夹"
     "（不要选带 game/serve.py 的目录）。套图做好后导出 .hgpk.zip，再导入对战端。"
@@ -126,8 +129,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json(path, data)
 
 
 def _resolve_folder(folder: str, *, must_exist: bool = True) -> Path:

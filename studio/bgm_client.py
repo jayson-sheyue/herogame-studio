@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from prompts import stage_bgm_prompt
-from vertex_client import VertexSettings, _call_with_backoff, _require_project, get_client, merge_settings
+from vertex_client import VertexSettings, _call_with_backoff, require_key, get_client, merge_settings
 
 LYRIA_CLIP_MODEL = "lyria-3-clip-preview"
 
@@ -35,7 +35,9 @@ def generate_stage_bgm(
     settings: VertexSettings | None = None,
 ) -> tuple[bytes, str, dict]:
     cfg = merge_settings(settings)
-    project = _require_project(cfg)
+    require_key(cfg)
+    if cfg.resolved_provider == "vertex":
+        raise ValueError("Vertex Express 暂不提供 Lyria Interactions 接口。请使用有模型权限的 AI Studio Key，或上传已有 BGM。")
     prompt = stage_bgm_prompt(display_name, visual, bpm=bpm)
 
     if image_bytes:
@@ -48,10 +50,10 @@ def generate_stage_bgm(
         payload = prompt
 
     def _run():
-        client = get_client(project, cfg.location)
+        client = get_client(cfg.provider, cfg.api_key)
         return client.interactions.create(model=LYRIA_CLIP_MODEL, input=payload)
 
-    interaction = _call_with_backoff(_run)
+    interaction = _call_with_backoff(_run, api_key=cfg.api_key)
     output = interaction.output_audio
     if not output:
         note = (interaction.output_text or "").strip()

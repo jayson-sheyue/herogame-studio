@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from pathlib import Path
+
+from storage import write_json
 
 from PIL import Image
 
@@ -37,6 +40,32 @@ def draft_portrait_frames_dir(portrait_id: str, slot_id: str) -> Path:
     return paths.drafts / "portraits" / portrait_id / "frames" / slot_id
 
 
+def draft_portrait_candidates_dir(portrait_id: str, slot_id: str) -> Path:
+    return paths.drafts / "portraits" / portrait_id / "candidates" / slot_id
+
+
+def clear_portrait_candidates(portrait_id: str, slot_id: str) -> None:
+    folder = draft_portrait_candidates_dir(portrait_id, slot_id)
+    if folder.is_dir():
+        shutil.rmtree(folder)
+
+
+def list_portrait_candidates(portrait_id: str, slot_id: str) -> list[Path]:
+    folder = draft_portrait_candidates_dir(portrait_id, slot_id)
+    return sorted(folder.glob("*.png"), key=lambda p: p.name) if folder.is_dir() else []
+
+
+def adopt_portrait_candidate(portrait_id: str, slot_id: str, candidate: int) -> Path:
+    files = list_portrait_candidates(portrait_id, slot_id)
+    if candidate < 1 or candidate > len(files):
+        raise ValueError("候选版本不存在。")
+    dest = draft_portrait_png(portrait_id, slot_id)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(files[candidate - 1], dest)
+    reset_portrait_slot_derivatives(portrait_id, slot_id)
+    return dest
+
+
 def export_portrait_dir(portrait_id: str, slot_id: str | None = None) -> Path:
     base = paths.studio / "exports" / "portraits" / portrait_id
     return base / slot_id if slot_id else base
@@ -53,8 +82,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json(path, data)
 
 
 def read_portrait_bible(portrait_id: str) -> dict:
@@ -113,22 +141,20 @@ def clear_portrait_split_frames(portrait_id: str, slot_id: str) -> None:
 
 
 def ensure_portrait_split_source(portrait_id: str, slot_id: str) -> Path | None:
-    """Keep `.source.png` in sync with the current draft before cutting.
+    """Freeze the generated strip as the *base-keyframe* source on first cut.
 
-    Older builds only copied draft→source once; regenerating the draft left a
-    stale source, so 切分/去青 kept punching the previous strip (e.g. hollow
-    cream clothes) while the UI preview showed the new draft.
+    A body-scale save turns the editable draft into a final timeline that may
+    have duplicated/reordered frames. It must never overwrite this source,
+    otherwise a later intentional reset would cut that final timeline again.
+    New generation/adoption calls ``reset_portrait_slot_derivatives`` first,
+    so its first cut still captures the new generated strip.
     """
     draft = draft_portrait_png(portrait_id, slot_id)
     if not draft.exists():
         return None
     source = draft_portrait_source_png(portrait_id, slot_id)
     source.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        need_copy = (not source.exists()) or (source.stat().st_mtime_ns < draft.stat().st_mtime_ns)
-    except OSError:
-        need_copy = True
-    if need_copy:
+    if not source.exists():
         shutil.copy2(draft, source)
     return source
 
@@ -141,10 +167,18 @@ def reset_portrait_slot_derivatives(portrait_id: str, slot_id: str) -> None:
 
 
 def portrait_slot_frame_count(slot_id: str, bible: dict | None = None) -> int:
-    from prompts import normalize_portrait_slot_list
+    from prompts import PORTRAIT_SLOTS, normalize_portrait_slot_list
 
     for slot in normalize_portrait_slot_list((bible or {}).get("slots"), fallback_all=True):
         if slot["id"] == slot_id:
+            # `frames` is the immutable count used to cut the generated base
+            # strip. Old projects stored a body-scale timeline count here;
+            # recover preset slots to their original default until re-saved.
+            if slot.get("base_frames") is not None:
+                return max(2, int(slot.get("base_frames") or 5))
+            preset = next((s for s in PORTRAIT_SLOTS if s["id"] == slot_id), None)
+            if preset:
+                return int(preset.get("frames") or 5)
             return int(slot.get("frames") or 5)
     return int(FRAME_SLOTS.get(slot_id) or 5)
 
@@ -183,7 +217,10 @@ def split_portrait_strip(
     # Old transparent exports belong to the previous cut — drop so play bay
     # doesn't keep showing hollow/stale keyed frames next to the new split.
     clear_portrait_exports(portrait_id, slot_id)
-    out = split_strip(src, dest, n, variant=variant)
+    # Portrait illustration has fine dark linework, semi-transparent fabric and
+    # wing facets. Do not run the game-sheet panel-bar eraser: it can paint
+    # legitimate artwork cyan before the chroma key even runs.
+    out = split_strip(src, dest, n, variant=variant, slot_id=slot_id, scrub=False)
     meta_path = dest / "cells.json"
     if meta_path.exists():
         try:
@@ -195,6 +232,19 @@ def split_portrait_strip(
                 meta_path.write_text(json.dumps(meta), encoding="utf-8")
         except Exception:  # noqa: BLE001
             pass
+    # Manual card splitting is an explicit reset to the generated base strip.
+    # Clear only the final-timeline metadata; normal playback never calls this.
+    active_bible = bible or read_portrait_bible(portrait_id)
+    if active_bible:
+        base_n = portrait_slot_frame_count(slot_id, active_bible)
+        slots = resolve_portrait_slots(active_bible, fallback_all=True)
+        for item in slots:
+            if item["id"] == slot_id:
+                item["base_frames"] = base_n
+                item["frames"] = base_n
+                item.pop("playback_frames", None)
+        active_bible["slots"] = slots
+        write_portrait_bible(portrait_id, active_bible)
     return out
 
 
@@ -219,15 +269,29 @@ def export_portrait_slot(
         raise FileNotFoundError(f"槽位「{slot_id}」切分后仍无帧。")
 
     dest_dir = export_portrait_dir(portrait_id, slot_id)
-    if dest_dir.exists():
-        shutil.rmtree(dest_dir)
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{slot_id}-export-", dir=dest_dir.parent))
+    previous = staging.with_name(staging.name + ".previous")
     written: list[str] = []
-    for src in frames:
-        out = dest_dir / src.name
-        keyed = cyan_key_png(src.read_bytes(), frames=1, strict=strict)
-        out.write_bytes(keyed)
-        written.append(str(out))
+    try:
+        for src in frames:
+            keyed = cyan_key_png(src.read_bytes(), frames=1, strict=strict)
+            (staging / src.name).write_bytes(keyed)
+            written.append(str(dest_dir / src.name))
+        # Publish the complete set only; keep the old export on any failure.
+        if dest_dir.exists():
+            dest_dir.replace(previous)
+        try:
+            staging.replace(dest_dir)
+        except OSError:
+            if previous.exists():
+                previous.replace(dest_dir)
+            raise
+        if previous.exists():
+            shutil.rmtree(previous, ignore_errors=True)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
     return {
         "portrait_id": portrait_id,
         "slot_id": slot_id,
@@ -248,7 +312,7 @@ def portrait_asset_view(portrait_id: str, slot_id: str, bible: dict | None = Non
             (p for p in export_dir.iterdir() if p.suffix.lower() == ".png" and p.stem.isdigit()),
             key=lambda p: int(p.stem),
         )
-    n = portrait_slot_frame_count(slot_id, bible)
+    base_n = portrait_slot_frame_count(slot_id, bible)
     draft_m = int(draft.stat().st_mtime_ns) if draft.exists() else 0
     # Stale vs the sheet that cut should use (source if present, else draft).
     cut_m = 0
@@ -262,8 +326,21 @@ def portrait_asset_view(portrait_id: str, slot_id: str, bible: dict | None = Non
             frames_stale = any(p.stat().st_mtime_ns < cut_m for p in frames)
         except OSError:
             frames_stale = True
-    # Also stale if draft moved past frozen source (regen before re-split).
-    if draft.exists() and source.exists():
+    split_meta: dict = {}
+    meta_path = draft_portrait_frames_dir(portrait_id, slot_id) / "cells.json"
+    if meta_path.exists():
+        try:
+            raw_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if isinstance(raw_meta, dict):
+                split_meta = raw_meta
+        except (OSError, json.JSONDecodeError):
+            pass
+    final_timeline = bool(frames) and (
+        str(split_meta.get("source") or "") == "portrait_body_scale" or len(frames) != base_n
+    )
+    # A final body-scale timeline deliberately makes the editable draft newer
+    # than its frozen base strip. That is not a stale cut.
+    if not final_timeline and draft.exists() and source.exists():
         try:
             if draft.stat().st_mtime_ns > source.stat().st_mtime_ns:
                 frames_stale = True if frames else frames_stale
@@ -278,11 +355,16 @@ def portrait_asset_view(portrait_id: str, slot_id: str, bible: dict | None = Non
             exports_stale = any(p.stat().st_mtime_ns < newest_src for p in exports)
         except OSError:
             exports_stale = True
+    timeline_n = len(frames) if final_timeline else base_n
+    quality = ((bible or {}).get("generation_quality") or {}).get(slot_id) or {}
+    candidates = list_portrait_candidates(portrait_id, slot_id)
     return {
         "slot_id": slot_id,
         "has_draft": draft.exists(),
         "draft_mtime": draft_m,
-        "frame_count": n,
+        "frame_count": timeline_n,
+        "base_frame_count": base_n,
+        "timeline_final": final_timeline,
         "split_count": len(frames),
         "export_count": len(exports),
         "frames_stale": frames_stale,
@@ -295,6 +377,14 @@ def portrait_asset_view(portrait_id: str, slot_id: str, bible: dict | None = Non
             f"/library/exports/portraits/{portrait_id}/{slot_id}/{p.name}?t={p.stat().st_mtime_ns}" for p in exports
         ],
         "export_dir": str(export_dir) if exports else "",
+        "split_variant": int(split_meta.get("variant") or 0),
+        "split_label": str(split_meta.get("variant_label") or "按人物轮廓装箱"),
+        "split_variants": 8,
+        "quality": quality,
+        "candidates": [
+            f"/drafts/portraits/{portrait_id}/candidates/{slot_id}/{p.name}?t={p.stat().st_mtime_ns}"
+            for p in candidates
+        ],
     }
 
 
@@ -351,23 +441,35 @@ def set_portrait_body_guide(portrait_id: str, body_guide_h: int | float | None) 
 
 
 def ensure_portrait_equal_frames(portrait_id: str, slot_id: str, *, force: bool = False, bible: dict | None = None) -> list[Path]:
-    """Equal-width slice of the draft strip into frames/ for body-scale review."""
+    """Frames for portrait body-scale: reuse card splits; do not re-scrub the draft strip."""
     path = draft_portrait_png(portrait_id, slot_id)
     if not path.exists():
         raise FileNotFoundError(f"套图「{slot_id}」还没有草稿，请先生成。")
     n = portrait_slot_frame_count(slot_id, bible)
     existing = list_portrait_split_frames(portrait_id, slot_id)
-    if existing and len(existing) == n and not force:
+    dest = draft_portrait_frames_dir(portrait_id, slot_id)
+    if existing and not force:
+        source = ""
         try:
-            newest = max(p.stat().st_mtime for p in existing)
-            if newest >= path.stat().st_mtime - 0.05:
-                return existing
-        except OSError:
-            pass
+            meta = json.loads((dest / "cells.json").read_text(encoding="utf-8")) if (dest / "cells.json").exists() else {}
+            if isinstance(meta, dict):
+                source = str(meta.get("source") or "")
+        except Exception:  # noqa: BLE001
+            source = ""
+        # A body-scale timeline is already the user's final ordered sequence.
+        # Legacy projects did not tag it, but a count different from the base
+        # strip is equally conclusive. Never slice either form on workspace
+        # open; it may intentionally contain duplicate/in-between frames.
+        if source == "portrait_body_scale" or len(existing) != n:
+            return existing
+        if len(existing) == n:
+            return existing
+
+    from game_assets import equal_width_cell_layout
+
     im = Image.open(path).convert("RGBA")
     w, h = im.size
     fw = max(1, w // max(1, n))
-    dest = draft_portrait_frames_dir(portrait_id, slot_id)
     clear_portrait_split_frames(portrait_id, slot_id)
     dest.mkdir(parents=True, exist_ok=True)
     out: list[Path] = []
@@ -382,7 +484,7 @@ def ensure_portrait_equal_frames(portrait_id: str, slot_id: str, *, force: bool 
         "expected": n,
         "split_frames": n,
         "applied": True,
-        "cells": [],
+        "cells": equal_width_cell_layout(w, h, n),
         "source": "portrait_body_scale",
     }
     (dest / "cells.json").write_text(json.dumps(meta), encoding="utf-8")
@@ -397,6 +499,10 @@ def measure_portrait_ref_body(portrait_id: str, ref_slot: str = "idle", bible: d
     if not path.exists():
         raise FileNotFoundError(f"缺少基准套图「{ref_slot}」，请先生成草稿（建议先出待机）。")
     n = portrait_slot_frame_count(ref_slot, bible)
+    # The draft may be the final duplicated/reordered timeline rather than the
+    # original generated strip, so measure it with the actual saved frame set.
+    final_files = list_portrait_split_frames(portrait_id, ref_slot)
+    n = len(final_files) if final_files else n
     m = measure_strip_body(Image.open(path).convert("RGBA"), n)
     if not m.get("body_h"):
         raise ValueError(f"基准套图「{ref_slot}」测不到躯干身高。")
@@ -475,7 +581,8 @@ def list_portrait_body_scale_workspace(
         path = draft_portrait_png(portrait_id, sid)
         if not path.exists():
             continue
-        n = portrait_slot_frame_count(sid, bible)
+        files = list_portrait_split_frames(portrait_id, sid)
+        n = len(files) if files else portrait_slot_frame_count(sid, bible)
         m = measure_strip_body(Image.open(path).convert("RGBA"), n)
         body_h = int(m.get("body_h") or 0)
         delta = body_h - target
@@ -660,8 +767,19 @@ def save_portrait_body_scale_slot(
 
     dest_dir = draft_portrait_frames_dir(portrait_id, slot_id)
     dest_dir.mkdir(parents=True, exist_ok=True)
+    # A play card fits each standalone PNG independently.  Keeping the raw
+    # per-frame widths here made an otherwise correct body-scale workspace
+    # preview jump/shrink in the card player.  Canonicalize every saved frame
+    # onto the exact same canvas used for the rebuilt strip.
+    fw = max(im.size[0] for im in rebuilt)
+    fh = max(im.size[1] for im in rebuilt)
+    canonical: list[Image.Image] = []
+    for im in rebuilt:
+        cell_canvas = Image.new("RGBA", (fw, fh), CYAN_FILL)
+        cell_canvas.paste(im, ((fw - im.size[0]) // 2, 0), im)
+        canonical.append(cell_canvas)
     tmp_paths: list[Path] = []
-    for i, placed in enumerate(rebuilt):
+    for i, placed in enumerate(canonical):
         tmp = dest_dir / f".body_scale_tmp_{i:02d}.png"
         placed.save(tmp, format="PNG")
         tmp_paths.append(tmp)
@@ -673,25 +791,30 @@ def save_portrait_body_scale_slot(
     for i, tmp in enumerate(tmp_paths):
         tmp.replace(dest_dir / f"{i:02d}.png")
 
-    fw = max(im.size[0] for im in rebuilt)
-    fh = max(im.size[1] for im in rebuilt)
     sheet = Image.new("RGBA", (fw * len(rebuilt), fh), CYAN_FILL)
-    for i, im in enumerate(rebuilt):
-        cell_canvas = Image.new("RGBA", (fw, fh), CYAN_FILL)
-        cell_canvas.paste(im, ((fw - im.size[0]) // 2, 0), im)
+    for i, cell_canvas in enumerate(canonical):
         sheet.paste(cell_canvas, (i * fw, 0))
 
     draft = draft_portrait_png(portrait_id, slot_id)
     draft.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(draft, format="PNG")
     src = draft_portrait_source_png(portrait_id, slot_id)
-    sheet.save(src, format="PNG")
+    # Preserve the frozen generated base strip. It is the only safe source for
+    # an explicit future "reset to base keyframes" action. Legacy projects
+    # without one cannot recover that original strip, so keep the final sheet
+    # as a fallback rather than failing the save.
+    if not src.exists():
+        sheet.save(src, format="PNG")
 
-    # Persist frame count into bible slot meta if present
+    # Store base-cut count and final playback count separately. The latter is
+    # allowed to grow through duplicate/reordered frames in the workspace.
+    base_n = portrait_slot_frame_count(slot_id, bible)
     slots = resolve_portrait_slots(bible, fallback_all=True)
     for s in slots:
         if s["id"] == slot_id:
-            s["frames"] = len(rebuilt)
+            s["base_frames"] = base_n
+            s["frames"] = base_n
+            s["playback_frames"] = len(rebuilt)
     bible["slots"] = slots
     write_portrait_bible(portrait_id, bible)
 
@@ -750,7 +873,8 @@ def unify_portrait_body_scale(portrait_id: str, *, ref_slot: str = "idle") -> di
         path = draft_portrait_png(portrait_id, sid)
         if not path.exists():
             continue
-        ensure_portrait_equal_frames(portrait_id, sid, force=True, bible=bible)
+        # Preserve an already approved duplicate/reordered timeline.
+        ensure_portrait_equal_frames(portrait_id, sid, force=False, bible=bible)
         files = list_portrait_split_frames(portrait_id, sid)
         if not files:
             continue
@@ -809,4 +933,3 @@ def unify_portrait_body_scale(portrait_id: str, *, ref_slot: str = "idle") -> di
         "count": len(updated),
         "exported": True,
     }
-

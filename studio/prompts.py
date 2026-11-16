@@ -284,7 +284,7 @@ HERO_SLOTS: list[dict] = [
         "auto_refs": ["turnaround"],
         "global_refs": [],
         "uses_home_stage": False,
-        "hint": "5 帧地面挨打直到倒地。1 中弹 → 5 躺倒。不要空中，不要循环站起来。",
+        "hint": "4 帧单行横条：中弹→失衡→落地→紧凑倒地定格。不是 2×2 田字格。不要全身拉平横躺，不要循环站起来。",
     },
     {
         "id": "air_hurt",
@@ -296,7 +296,7 @@ HERO_SLOTS: list[dict] = [
         "auto_refs": ["turnaround"],
         "global_refs": [],
         "uses_home_stage": False,
-        "hint": "5 帧空中挨打直到落地。脚离地，最后倒地。不要站着挨打。",
+        "hint": "4 帧单行横条：空中中弹→翻滚→落地→紧凑倒地定格。不是 2×2 田字格。不要站着挨打。",
     },
     {
         "id": "jump",
@@ -428,7 +428,7 @@ HERO_SLOTS: list[dict] = [
         "auto_refs": ["turnaround"],
         "global_refs": ["style"],
         "uses_home_stage": False,
-        "hint": "5 帧败者动作。被击败后失衡到倒地定格。青屏，不要地图。",
+        "hint": "4 帧单行横条：失衡→倒塌→落地→紧凑倒地定格。不是 2×2 田字格。青屏，不要地图。",
     },
     {
         "id": "win_cg",
@@ -518,7 +518,7 @@ for _slot in HERO_SLOTS:
     elif _slot["id"] in {"hurt", "air_hurt", "defeat_cg"}:
         _slot["global_refs"] = ["style"]
         _slot["auto_refs"] = ["turnaround"]
-        _slot["frames"] = 5
+        _slot["frames"] = 4
     else:
         _slot["global_refs"] = ["style"]
         _slot["auto_refs"] = ["turnaround"]
@@ -529,23 +529,22 @@ STRIP_SEPARATION = (
     "CELL SEPARATION: each figure lives in its own cell. "
     "Leave a CLEAR empty #00FFFF column between neighbors, at least as wide as the head. "
     "Silhouettes must NOT touch or overlap. "
-    "CELL WIDTH IS NOT UNIFORM. A physically wider pose (lying down, full weapon extension, "
+    "CELL WIDTH IS NOT UNIFORM. A physically wider pose (full weapon extension, "
     "long sleeves, horizontal slash) MUST occupy a WIDER cell. Standing poses keep extra empty cyan. "
     "NEVER crop, squash, or hide part of a body to fit a 1/N column. "
-    "Head-to-toe must be fully visible — when lying down, the WHOLE horizontal body "
-    "(head, torso, legs, feet) stays inside that one cell. "
     "If arms, weapons, hair, cloaks, or kicks need room, widen the cell; do not enter the next person."
 )
 
 STRIP_RETRY = (
     "CRITICAL RETRY — previous sheet FAILED layout or acting. "
     "ONE horizontal ROW only. EXACTLY {n} FULL-BODY figures. Count the people. "
-    "FORBIDDEN: 2 rows, 2x5 contact sheet, bust/head row, 8 or 10 clones, extra copies. "
+    "FORBIDDEN: a second row, a contact sheet/grid, bust/head rows, or any extra copy. "
     "If the count is not {n}, redraw. "
     "CONTINUITY: this is ONE clip, not five similar photos. "
     "Frame N+1 is the in-between of N and N+2. Limbs travel on arcs. "
     "Loop clips (idle/walk/dash/guard): frame {n} blends into frame 1. "
     "Fall clips (hurt/air_hurt/defeat): frame {n} is DOWN/still — do not stand back up. "
+    "DOWN pose is COMPACT (knees-up or side-heap), NEVER a full-length horizontal corpse. "
     "Walk/dash: opposite legs, passing pose with free foot HIGH. "
     "Attack: wind-up → strike → follow-through → recover. "
     "Down+attack and down+skill: MID-AIR striking toward the ground — NOT a crouch. "
@@ -553,6 +552,20 @@ STRIP_RETRY = (
     "Onion-skin: same hip X. Ground clips keep the same feet Y. "
     f"{STRIP_SEPARATION} "
     "No cyan FX."
+)
+
+# Desk-pet strips do not share the fighting game's implied camera or acting.
+# In particular, a quiet portrait idle may legitimately animate only wings,
+# hair, or breathing while the body stays still.
+PORTRAIT_STRIP_RETRY = (
+    "CRITICAL RETRY — previous sheet FAILED the requested desk-pet storyboard. "
+    "ONE horizontal ROW only. EXACTLY {n} FULL-BODY figures of the SAME locked character. "
+    "Keep the camera/view and every requested anchor pose from the DEVELOPER MOTION BLUEPRINT. "
+    "Do NOT replace a front-facing blueprint with side profile. "
+    "Do NOT invent walking, combat, a turn, or large body motion when the blueprint requests a quiet idle. "
+    "Adjacent cells are readable in-betweens of the requested motion; only the explicitly requested parts need move. "
+    "No floor, no stage, no combat FX, no panel borders, no extra clones. "
+    "Separate cells only with empty #00FFFF."
 )
 
 FX_STRIP_RETRY = (
@@ -612,6 +625,45 @@ LOOP_SLOTS = {"idle", "walk", "dash", "guard", "happy", "sad", "sleep", "wave"}
 FALL_SLOTS = {"hurt", "air_hurt", "defeat_cg"}
 AIR_ACTING_SLOTS = {"jump", "air_hurt", "air_attack", "attack_down", "combo_down"}
 
+# Knockdown strips are still equal-width 21:9 cells. A full-length supine body
+# spans two cells and cannot be cut. Fighting games use compact downed poses.
+FALL_COMPACT_SEPARATION = (
+    "KNOCKDOWN STRIP: EXACTLY 4 FULL-BODY figures in ONE horizontal ROW (21:9). "
+    "This is a left-to-right strip — NEVER a 2×2 comic grid / 田字格 / two stacked rows. "
+    "Every cell has the SAME standing width — do NOT widen the last cell. "
+    "The last pose is DOWN but COMPACT, like a 2D fighting-game knockdown "
+    "(KoF / MvC / Bleach vs Naruto): on the BACK with KNEES BENT UP toward the chest, "
+    "OR crumpled on the SIDE in a heap, OR three-quarter FORESHORTENED with feet tucked. "
+    "The whole body stays visible. The DOWN silhouette WIDTH must be ≤ a standing idle. "
+    "Leave a CLEAR empty #00FFFF column (at least a head wide) between neighbors. "
+    "FORBIDDEN: a stretched head-to-feet supine corpse; legs crossing into the previous person; "
+    "a last cell wider than the others; 2×2 contact sheet. If the last pose would be wider than a standing cell, tuck the legs."
+)
+
+FALL_COMPACT_OVERRIDE = (
+    "OVERRIDE — higher priority than the numbered draft above: "
+    "ignore any line that asks for a complete horizontal corpse, a WIDER last cell, five people, or a 2×2 grid. "
+    "EXACTLY {n} figures in ONE horizontal ROW. "
+    "Frame {n} MUST be a compact knockdown that fits a standing-width cell "
+    "(knees-up or side-heap). A full-length lying body or a 田字格 cannot be cut and is unusable."
+)
+
+FALL_STRIP_RETRY = (
+    "CRITICAL RETRY — previous knockdown sheet FAILED because the last pose was too wide, "
+    "spanned two cells, used five people, or was a 2×2 grid. "
+    "ONE horizontal ROW only. EXACTLY {n} FULL-BODY figures. "
+    + FALL_COMPACT_SEPARATION
+    + " Frame {n} is DOWN/still — do not stand back up. "
+    "Tuck the legs. Do not stretch the body on the ground. "
+    "FORBIDDEN: 2 rows, 2×2 田字格, a fifth clone, a full-length supine corpse, a wider last cell."
+)
+
+
+def strip_separation_for(slot_id: str) -> str:
+    if slot_id in FALL_SLOTS:
+        return FALL_COMPACT_SEPARATION
+    return STRIP_SEPARATION
+
 SLOT_BEATS: dict[str, str] = {
     "turnaround": (
         "TURNAROUND / INSPECTION SHEET, STANDING READY for inspection. "
@@ -649,18 +701,22 @@ SLOT_BEATS: dict[str, str] = {
     ),
     "hurt": (
         "GROUND HIT until KNOCKDOWN facing RIGHT. ONE-SHOT, do NOT loop back to standing. "
-        "Starts on the ground, ends DOWN on the ground. FIVE poses only — do not invent a sixth. "
-        "1 impact still standing (body snap), 2 stagger, 3 falling, "
-        "4 hits the ground, 5 fully DOWN and still. "
-        "Frame 5 is a COMPLETE horizontal body on the ground: head, torso, legs, and feet all visible. "
-        "Give frame 5 a WIDER cell. Do not crop a standing-width box out of a lying pose. "
+        "ONE horizontal ROW of FOUR poses only — never a 2×2 comic grid. Do not invent a fifth person. "
+        "1 impact still standing (body snap), 2 stagger / start falling, "
+        "3 hits the ground, 4 fully DOWN and still. "
+        "Frame 4 is a COMPACT fighting-game knockdown that FITS a standing-width cell: "
+        "on the BACK with KNEES BENT UP toward the chest, OR crumpled on the SIDE in a heap, "
+        "OR three-quarter foreshortened with feet tucked. Whole body still visible. "
+        "FORBIDDEN: a stretched head-to-feet supine corpse; a WIDER last cell; "
+        "legs crossing into frame 3; two rows; 2×2 田字格. Leave empty cyan between 3 and 4. "
         "Not airborne. Not attacking."
     ),
     "air_hurt": (
         "AIR HIT until FALLING DOWN facing RIGHT. ONE-SHOT. Feet OFF the ground until the last frames. "
-        "FIVE poses only — do not invent a sixth. "
-        "1 airborne impact, 2 tumble, 3 falling, 4 near the ground, 5 crash/down. "
-        "Frame 5 is a COMPLETE body on the ground, not a cropped torso. Wider cell if lying. "
+        "ONE horizontal ROW of FOUR poses only — never a 2×2 comic grid. Do not invent a fifth person. "
+        "1 airborne impact, 2 tumble, 3 falling near the ground, 4 crash/down. "
+        "Frame 4 is a COMPACT knockdown that FITS a standing-width cell "
+        "(knees-up on the back, or a side heap) — not a cropped torso, not a full-length corpse. "
         "Not a standing hurt. Do not loop to a flying idle."
     ),
     "jump": (
@@ -725,10 +781,13 @@ SLOT_BEATS: dict[str, str] = {
         "Not a cinematic CG. One-shot, not a walk cycle."
     ),
     "defeat_cg": (
-        "LOSER ANIMATION after being beaten, facing RIGHT. ONE-SHOT. FIVE poses only. "
-        "1 last hit, 2 stagger, 3 collapse, 4 hit dirt, 5 still/defeated. "
-        "Frame 5 is a COMPLETE horizontal body on the ground — head to feet, not a cropped slice. "
-        "Give the down pose a WIDER cell. No stage. Do not loop to standing."
+        "LOSER ANIMATION after being beaten, facing RIGHT. ONE-SHOT. "
+        "ONE horizontal ROW of FOUR poses only — never a 2×2 comic grid. "
+        "1 last hit, 2 stagger/collapse, 3 hit dirt, 4 still/defeated. "
+        "Frame 4 is a COMPACT fighting-game knockdown that FITS a standing-width cell: "
+        "knees-up on the back, or crumpled on the side — whole body visible, not a cropped slice. "
+        "FORBIDDEN: a full-length horizontal corpse, a WIDER last cell, two rows, 2×2 田字格. "
+        "No stage. Do not loop to standing."
     ),
     "win_cg": (
         "VICTORY ANIMATION facing RIGHT, 5 poses on one baseline. "
@@ -764,8 +823,8 @@ SLOT_FRAMEWORK = """
 - walk 地面走动：5 帧在地面向前走。左右脚交替，抬腿高。原地循环，人不要在条上平移。
 - dash 地面冲刺：5 帧在地面向前冲。前倾、大步。循环。
 - guard 防守状态：5 帧原地格挡。武器/手臂架住。循环。
-- hurt 地面受击：5 帧在地面挨打直到倒地。1 中弹站着 → 5 躺倒。禁止循环站起来。
-- air_hurt 空中受击：5 帧在空中挨打直到落地。脚离地，最后倒地。
+- hurt 地面受击：4 帧单行横条（禁止 2×2 田字格）。1 中弹站着 → 4 紧凑倒地定格（抱膝仰卧或侧卧一摊）。禁止全身拉平横躺跨两格。禁止循环站起来。
+- air_hurt 空中受击：4 帧单行横条。脚离地挨打直到落地，最后紧凑倒地。禁止田字格。
 - jump 跳跃：5 帧原地跳起并自然落地。蹲→起→顶→落→落地。人水平不要平移。
 - attack 地面普攻：5 帧在地面向前打。蓄力→出招→收回。
 - air_attack 空中普攻：5 帧在空中向前打。全程脚离地。不是下砸。
@@ -776,9 +835,9 @@ SLOT_FRAMEWORK = """
 - combo_down 下+小技能：5 帧在空中对地施法起手到结束。脚离地。禁止蹲地。
 - super 大招奥义：5 帧奥义起手式到结束式。
 - opening_cg 出场动作：5 帧出场挑衅对手。
-- defeat_cg 战败动作：5 帧被击败后的败者动作，倒地定格。
+- defeat_cg 战败动作：4 帧单行横条，被击败后失衡到紧凑倒地定格。禁止田字格。
 - win_cg 战胜动作：5 帧胜利动作。
-每个 slots[id] 必须用英文写出编号分镜（三视图 1-4，其余动作一律 1-5）。每一帧写清：脚在地还是离地、双腿、躯干、武器/手。相邻帧是中间帧。禁止只写 "5 frames of walking"。
+每个 slots[id] 必须用英文写出编号分镜（三视图 1-4，hurt/air_hurt/defeat_cg 1-4 单行横条，其余动作一律 1-5）。每一帧写清：脚在地还是离地、双腿、躯干、武器/手。相邻帧是中间帧。禁止只写 "5 frames of walking"。禁止把倒地条画成 2×2 田字格。
 """.strip()
 
 ALL_SLOTS = [STYLE_SLOT, STAGE_SLOT, *HERO_SLOTS]
@@ -878,6 +937,25 @@ for _ps in PORTRAIT_SLOTS:
 
 PORTRAIT_DEFAULT_PLAN_IDS = ("turnaround", "idle", "walk")
 
+# Defaults for the portrait pipeline only. They must not leak a fighting stance
+# or a fixed side camera into a user-authored motion blueprint.
+PORTRAIT_SLOT_BEATS: dict[str, str] = {
+    "idle": (
+        "DESK-PET IDLE LOOP. Calm standing pose, never a fight-ready stance. "
+        "1 settle, 2 begin a small breath or accessory motion, 3 gentle peak, "
+        "4 ease back, 5 near the first pose. Do not walk or turn. "
+        "A blueprint may intentionally keep torso, legs and arms almost still."
+    ),
+    "walk": (
+        "DESK-PET WALK LOOP. Contact, weight transfer, passing step, opposite contact, passing step. "
+        "Keep the chosen camera consistent; do not turn it into combat acting."
+    ),
+    "happy": "DESK-PET HAPPY LOOP. A small friendly celebration or delighted reaction; no combat pose.",
+    "sad": "DESK-PET SAD LOOP. A gentle dejected reaction; no combat pose.",
+    "sleep": "DESK-PET SLEEP LOOP. A calm sleeping pose with subtle breathing; no combat pose.",
+    "wave": "DESK-PET WAVE LOOP. A friendly greeting with a readable hand wave; no combat pose.",
+}
+
 
 def normalize_portrait_slot(raw: dict | str) -> dict:
     """User/preset slot → full slot meta (id, title, frames, refs…)."""
@@ -903,9 +981,38 @@ def normalize_portrait_slot(raw: dict | str) -> dict:
         "hint": "",
     }
     title = str(raw.get("title") or base.get("title") or sid).strip() or sid
-    frames = int(raw.get("frames") or base.get("frames") or (4 if sid == "turnaround" else 5))
+    # ``frames`` is the number requested from the image model: it is the
+    # immutable base strip, not the number of frames in an edited playback
+    # timeline.  Older projects had no ``base_frames`` and overwrote
+    # ``frames`` after duplicating/reordering in the body-scale workspace.
+    # For a built-in slot, migrate that ambiguous old value back to the preset
+    # unless an explicit base_frames marker was saved.
+    has_base_frames = raw.get("base_frames") is not None
+    requested_frames = raw.get("base_frames") if has_base_frames else raw.get("frames")
+    if preset and not has_base_frames:
+        requested_frames = base.get("frames")
+    elif preset and has_base_frames:
+        # One released build wrote a body-scale playback count into both
+        # `frames` and `base_frames` while leaving the preset's “5 帧” hint
+        # untouched.  That combination can only be legacy corruption: a real
+        # plan edit is normalised with a matching hint below.  Recover it to
+        # the preset before it can reach the image generator.
+        try:
+            preset_n = int(base.get("frames") or 5)
+            legacy_hint = str(raw.get("hint") or "")
+            if int(requested_frames) != preset_n and f"{preset_n} 帧" in legacy_hint:
+                requested_frames = preset_n
+        except (TypeError, ValueError):
+            pass
+    frames = int(requested_frames or base.get("frames") or (4 if sid == "turnaround" else 5))
     frames = 4 if sid == "turnaround" else max(2, min(frames, 8))
-    out = {**base, "id": sid, "title": title, "frames": frames}
+    out = {**base, "id": sid, "title": title, "frames": frames, "base_frames": frames}
+    playback_frames = raw.get("playback_frames")
+    if playback_frames is not None:
+        try:
+            out["playback_frames"] = max(frames, min(int(playback_frames), 999))
+        except (TypeError, ValueError):
+            pass
     if raw.get("hint"):
         out["hint"] = str(raw["hint"])
     else:
@@ -938,7 +1045,7 @@ def portrait_infer_system_for(slots: list[dict]) -> str:
     keys = ", ".join(f'"{s["id"]}"' for s in slots)
     lines = "\n".join(
         f'- {s["id"]}（{s["title"]}）：exactly {s["frames"]} frames'
-        + ("；三视图：正/3/4/侧/背" if s["id"] == "turnaround" else "；侧视全身动作条")
+        + ("；三视图：正/3/4/侧/背" if s["id"] == "turnaround" else "；全身动作条，默认右侧视；显式动作蓝图可指定正面/3/4/背面")
         for s in slots
     )
     return f"""
@@ -950,7 +1057,7 @@ def portrait_infer_system_for(slots: list[dict]) -> str:
 - 身形可读，可略偏可爱桌宠，但禁止 Q 版大头到认不出四肢。
 - 禁止战斗招式、武器连斩、弹道、舞台地面材质。
 - 人物主体（发/衣/配饰/描边）禁止使用接近青底的颜色：青/青绿/水色/teal/turquoise；若形象里有这类色，英文提示词里必须改写成翠绿/藏蓝/品红/珊瑚/奶油色等，方便去青抠图。
-- 动作条：exactly N DIFFERENT full-body figures，ONE horizontal ROW，right-facing SIDE PROFILE（三视图除外）。
+- 动作条：exactly N DIFFERENT full-body figures，ONE horizontal ROW。默认可用 right-facing side profile；若开发者之后给出动作蓝图并指定正面/3/4/背面或镜头，蓝图优先，不能擅自改回侧视。
 - 除三视图外，所有动作条必须与 turnaround 同一人：同一张脸、发型、耳朵、服装、配饰与色盘，只改姿势。
 - 格间留空青缝；循环槽最后一帧接回第 1 帧。
 - 只为下列套图写 prompts，不要自创额外槽位：
@@ -978,7 +1085,7 @@ PORTRAIT_SLOT_INFER_SYSTEM = """
 - 同一套 visual_lock（脸、服装、配饰、剪影）。
 - 桌宠/立绘小人：可读全身、可略可爱，禁止 Q 版大头到认不出四肢；禁止战斗招式、弹道、武器连斩、舞台地面。
 - 动作条：exactly N DIFFERENT full-body figures（三视图 exactly 4），ONE horizontal ROW。
-  动作槽一律 right-facing SIDE PROFILE；三视图：front / 3/4 / side / back。
+  动作槽默认 right-facing SIDE PROFILE；若开发者的动作蓝图指定正面/3/4/背面或镜头，蓝图优先；三视图：front / 3/4 / side / back。
 - 除三视图外，必须写成「与已锁定三视图同一人」：同一脸/发型/耳朵/服装/配饰/色盘，只改姿势。
 - 人物主体禁止青/青绿/水色/teal/turquoise（与 #00FFFF 青底冲突，去青会抠穿）；改用翠绿/藏蓝/品红/珊瑚/奶油色等。
 - 格间留空青缝；循环槽最后一帧接回第 1 帧。
@@ -1112,13 +1219,13 @@ INFER_SYSTEM = """
 - 剪影必须一眼能认出这个人；服装和武器必须锁死，以后所有关键帧遵守 visual_lock。
 - 技能要像「这个人的传说/发明被做成了招式」，招式读法必须贴开发者给的机制短述，不要另起一套。
 - 像素规格：高清像素、1px 深色描边、有限色盘、对战身形约占屏高 30%。
-- 精灵：exactly 5 DIFFERENT full-body figures（三视图 exactly 4），ONE horizontal ROW，right-facing SIDE PROFILE（三视图除外）。
-  禁止 2 行、2x5、头像条、8/10 个克隆。游戏会切开在同一位置播放：身体中轴同一 X、身形同一尺寸。
+- 精灵：exactly 5 DIFFERENT full-body figures（三视图 exactly 4；hurt/air_hurt/defeat_cg exactly 4 单行横条），ONE horizontal ROW，right-facing SIDE PROFILE（三视图除外）。
+  禁止 2 行、2x5、2×2 田字格（倒地条尤其禁止）、头像条、8/10 个克隆。游戏会切开在同一位置播放：身体中轴同一 X、身形同一尺寸。
   相邻帧是中间帧。腿、躯干、武器沿弧线变。禁止五张同一姿势。
   格间必须留出至少「头宽」的空青缝，人物剪影禁止相碰或叠进下一格；兵器/头发/披风/踢腿不准伸进邻帧。
   solid #00FFFF。贴身火花用红/橙/金/白/品红，禁止青/青绿。不要画舞台和地面材质。
 - 三视图必须画开发者给的这个历史人物，禁止画成风格锚点上的示范战士/法师/弓手。四格是同一人的正/3/4/侧/背。
-- 循环槽（idle/walk/dash/guard）第 5 帧接回第 1 帧。受击/战败第 5 帧是倒地定格，禁止站起来循环。
+- 循环槽（idle/walk/dash/guard）第 5 帧接回第 1 帧。受击/战败第 4 帧是倒地定格，禁止站起来循环。
   出招/跳跃/出场胜负是一条完整动作，第 5 帧收到待战或落地，不必把出招本身循环。
 
 """ + SLOT_FRAMEWORK + """
@@ -1266,7 +1373,7 @@ INFER_SYSTEM = """
     "fx_super": "..."
   }
 }
-slots 里角色动作 19 键 + 4 个 fx_* 弹道槽必须齐全。角色动作按套图框架逐帧编号写英文分镜（三视图 4 帧，其余动作一律 5 帧）。禁止空泛的 "5 frames of X"。出场/战胜/战败都是 5 帧青屏动作（战败倒地定格），不是 CG。
+slots 里角色动作 19 键 + 4 个 fx_* 弹道槽必须齐全。角色动作按套图框架逐帧编号写英文分镜（三视图 4 帧，hurt/air_hurt/defeat_cg 4 帧单行横条禁止田字格，其余动作一律 5 帧）。禁止空泛的 "5 frames of X"。出场/战胜都是 5 帧青屏动作，战败是 4 帧单行倒地定格，不是 CG。
 fx_* 槽：exactly 4 帧特效条，ONE ROW，solid #00FFFF。默认 fx_subjects=projectile：只画弹体/光束，禁止画人。
 若 bible.fx_subjects 某槽为 figure：画英雄本人（或骑乘）完成体术/冲锋类技能，需全身、侧视朝右，可附三视图参考。
 若为 clone：画同一英雄的分身/残影/重影，仍需全身、侧视朝右。
@@ -1296,11 +1403,11 @@ SLOT_INFER_SYSTEM = """
 必须遵守：
 - 同一套 visual_lock（脸、服装、武器）。
 - 演法按这个英雄的武器改（刀/枪/弓/术/拳），但槽位职责必须符合套图框架。
-- 精灵：动作条 exactly 5 DIFFERENT full-body figures（三视图 exactly 4），ONE ROW, right-facing SIDE PROFILE, #00FFFF only.
-  禁止 2 行/8 人/10 人/头像条。相邻帧是中间帧。人钉在每格同一中心、同一尺寸。
+- 精灵：动作条 exactly 5 DIFFERENT full-body figures（三视图 exactly 4；hurt/air_hurt/defeat_cg exactly 4 单行横条），ONE ROW, right-facing SIDE PROFILE, #00FFFF only.
+  禁止 2 行/2×2 田字格/8 人/10 人/头像条。相邻帧是中间帧。人钉在每格同一中心、同一尺寸。
   格间留出至少头宽的空青缝，剪影禁止相碰，兵器/头发/披风不准伸进邻帧。
 - 三视图：exactly 4 FULL-BODY figures, ONE ROW: front / 3/4 / side / back。
-- idle/walk/dash/guard 循环（第 5 帧接回第 1）。hurt/air_hurt/defeat 倒地定格，禁止站起来循环。
+- idle/walk/dash/guard 循环（第 5 帧接回第 1）。hurt/air_hurt/defeat 4 帧单行倒地定格，禁止站起来循环，禁止田字格。
 - attack_down 是半空中对地，combo_down 是空中对地技能，禁止画成蹲地。
 - 技能/奥义只画起手式到结束式的身体，贴手火花可以，禁止飞弹穿越格子、禁止第二只召唤兽。
 - 若槽是 fx_*：看 fx_subjects — projectile 只画弹道/特效禁止画人；figure 画英雄本人完成体术/骑乘/冲锋；clone 画分身/残影。禁止套用其他英雄标志物。
@@ -1562,6 +1669,8 @@ def slot_zh_fallback(slot: dict, note: str = "", fx_subject: str = "projectile")
                 bits.append(f"单行正好 {n} 个弹道/特效帧，青屏，不要画人。")
         else:
             bits.append(f"单行正好 {n} 个全身，青屏，动作条朝右。")
+        if sid in FALL_SLOTS:
+            bits.append("倒地条是单行横条，不是 2×2 田字格。")
     if note.strip():
         bits.append(f"已按意见修改：{note.strip()}")
     return "".join(bits) if len(bits) == 1 else " ".join(bits)
@@ -1606,8 +1715,24 @@ def enforce_strip_frame_count(text: str, n: int) -> str:
     n = max(1, int(n or 1))
     if not t or n < 2:
         return t
-    # Old era default was 6; also scrub nearby wrong counts that conflict with HARD LAYOUT.
-    wrong = [k for k in (6, 8, 10, 7) if k != n]
+    # Do this *before* converting stale counts.  Old prompt wrappers listed
+    # “8 figures / 10 figures” as forbidden examples.  Replacing those with
+    # the requested count produced the nonsensical pair “EXACTLY 5 figures”
+    # and “FORBIDDEN: 5 figures” in the same request.
+    def _drop_forbidden_counts(match: re.Match[str]) -> str:
+        clause = match.group(0)
+        clause = re.sub(
+            r"(?i)(?:,\s*)?\b(?:4|5|6|7|8|10)\s+(?:full-body\s+)?(?:figures?|views?|clones?)\b",
+            "",
+            clause,
+        )
+        clause = re.sub(r",\s*,", ",", clause)
+        return clause
+
+    t = re.sub(r"(?i)FORBIDDEN:\s*[^\n.]+", _drop_forbidden_counts, t)
+    t = re.sub(r"(?i)\b(?:8|10)\s+or\s+(?:8|10)\s+clones?\b", "extra clones", t)
+    # Old era default was 6; knockdown used to be 5; also scrub nearby wrong counts.
+    wrong = [k for k in (5, 6, 8, 10, 7) if k != n]
     for k in wrong:
         t = re.sub(rf"(?i)\b{k}\s+frames?\b", f"{n} frames", t)
         t = re.sub(rf"(?i)\bEXACTLY\s+{k}\b", f"EXACTLY {n}", t)
@@ -1615,6 +1740,11 @@ def enforce_strip_frame_count(text: str, n: int) -> str:
         t = re.sub(rf"(?i)\b{k}\s+FULL-BODY\b", f"{n} FULL-BODY", t)
         t = re.sub(rf"(?i)\b{k}\s+poses?\b", f"{n} poses", t)
         t = re.sub(rf"(?i)\b{k}\s+figures?\b", f"{n} figures", t)
+        t = re.sub(rf"(?i)\b{k}\s+different\s+(?:full-body\s+)?figures?\b", f"{n} different full-body figures", t)
+        t = re.sub(rf"(?i)\b{k}\s+cells?\b", f"{n} cells", t)
+        t = re.sub(rf"(?i)\bthose\s+{k}\s+cells?\b", f"those {n} cells", t)
+        t = re.sub(rf"(?i)\bnot\s+{k}\b", f"not {n}", t)
+        t = re.sub(rf"(?i)\bbeyond\s+{k}\b", f"beyond {n}", t)
         t = re.sub(rf"(?i)\b{k}\s+keyframes?\b", f"{n} keyframes", t)
         t = re.sub(rf"{k}\s*帧", f"{n} 帧", t)
         t = re.sub(rf"1\s*[-–—]\s*{k}\b", f"1-{n}", t)
@@ -1625,6 +1755,14 @@ def enforce_strip_frame_count(text: str, n: int) -> str:
         t = re.sub(r"(?i)(?:^|[.;\n])\s*6\s*[:：.]\s*[^.;\n]+", "", t)
         t = re.sub(r"(?i),\s*6\s*[:：.]\s*[^.;\n]+", "", t)
         t = re.sub(r"(?i)\band\s+6\s*[:：.]\s*[^.;\n]+", "", t)
+    if n == 4:
+        t = re.sub(r"(?i)(?:^|[.;\n])\s*5\s*[:：.]\s*[^.;\n]+", "", t)
+        t = re.sub(r"(?i),\s*5\s*[:：.]\s*[^.;\n]+", "", t)
+        t = re.sub(r"(?i)\band\s+5\s*[:：.]\s*[^.;\n]+", "", t)
+        t = re.sub(r"(?i)\bFIVE\s+frames?\b", "4 frames", t)
+        t = re.sub(r"(?i)\bFIVE\s+poses?\b", "4 poses", t)
+        t = re.sub(r"(?i)\bFIVE\s+figures?\b", "4 figures", t)
+        t = re.sub(r"(?i)(?:,|;)\s*5\s+(?:fully|still|crash)\b[^.;\n]*", "", t)
     t = re.sub(r"[ \t]{2,}", " ", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
@@ -1725,7 +1863,7 @@ def wrap_prompt(
                 f"Same body scale; each view centered. {stance}. "
                 f"{STRIP_SEPARATION} "
                 "FORBIDDEN: photoreal output, three different people, dummy style-sheet characters, "
-                "a second row of busts, 5 views, 2x5 contact sheet. "
+                "a second row of busts or a contact sheet/grid. "
                 f"Count: exactly 4 FULL-BODY figures of the SAME {subject}. "
                 "No stage, no floor, no scenery. Solid #00FFFF only."
             )
@@ -1748,7 +1886,7 @@ def wrap_prompt(
                 f"Same body scale; each view centered. {stance}. "
                 f"{STRIP_SEPARATION} "
                 "FORBIDDEN: three different people, dummy style-sheet characters, a second row of busts, "
-                "5 views, 2x5 contact sheet. "
+                "or a contact sheet/grid. "
                 f"Count: exactly 4 FULL-BODY figures of the SAME {subject}. "
                 "No stage, no floor, no scenery. Solid #00FFFF only."
             )
@@ -1761,7 +1899,9 @@ def wrap_prompt(
                 "IDENTITY LOCK: Match the attached turnaround EXACTLY — same face, hair, ears, "
                 "costume, bag/scarf/props, outline, palette, and body proportions. "
                 "Only the pose changes. FORBIDDEN: redesign, new outfit, palette swap, cousin lookalike. "
-                "Side-view profile facing RIGHT in every frame. Nose to the RIGHT. Not left. Not 3/4. Not front."
+                "CAMERA DEFAULT ONLY: use right-side profile if the numbered storyboard and developer motion blueprint "
+                "do not request a view. An explicit front / three-quarter / back / camera instruction in that blueprint "
+                "OVERRIDES this default in every frame; never silently change the requested view."
             )
             parts.append(PORTRAIT_CHROMA_SAFE)
         else:
@@ -1778,36 +1918,63 @@ def wrap_prompt(
             else "If a house-style sheet is attached AFTER the turnaround, it is PIXEL LANGUAGE only — "
             "do not copy those dummy fighters, and do not change this hero's face or costume."
         )
+        if slot_id in FALL_SLOTS:
+            flip_note = (
+                f"FLIPBOOK: those {n} cells are cropped onto ONE equal canvas. "
+                "ONE ROW left-to-right — NEVER a 2×2 comic grid / 田字格. "
+                "The last DOWN pose MUST FIT a standing-width cell — compact knockdown "
+                "(knees-up or side-heap), not a full-length horizontal body. "
+            )
+        else:
+            flip_note = (
+                f"FLIPBOOK: those {n} cells will be cropped onto ONE equal canvas sized to the WIDEST pose. "
+                "A fully-extended pose must be drawn COMPLETE — extra cell width is required, "
+                "not a cropped slice of a standing-width box. "
+            )
+        acting_rule = (
+            "DESK-PET ACTING: preserve the requested camera and motion budget. "
+            "A quiet idle may animate only wings, hair, breathing, tail, or another named accessory while the rest "
+            "of the body stays nearly still; do not invent walking, combat, or a turn. "
+            "Each frame must show the requested progression, even when it is deliberately subtle. "
+            if line == "deskpet"
+            else "ACTING: each silhouette must be obviously different at thumbnail size — "
+            "change BOTH legs, torso lean, AND hands/props. Frozen body + tiny wiggle = fail. "
+        )
         parts.append(
             f"HARD LAYOUT: ONE horizontal ROW, EXACTLY {n} FULL-BODY figures, no more no less. "
-            f"FORBIDDEN: 2 rows, 2x4, 2x5, 8 figures, 10 figures, bust/head row, extra clones, contact sheet. "
+            "FORBIDDEN: a second row, a grid/contact sheet, bust/head row, or any extra clone/person. "
             f"If you count the people and it is not {n}, the image is unusable. "
-            f"FLIPBOOK: those {n} cells will be cropped onto ONE equal canvas sized to the WIDEST pose. "
-            "A lying / fully-extended pose must be drawn COMPLETE — extra cell width is required, "
-            "not a cropped slice of a standing-width box. "
+            f"{flip_note}"
             "Onion-skin: same body-center X on standing poses. Do not pan the figure across the strip. "
             "Looping ground clips keep the same feet Y and body scale. "
             "Air and knockdown clips may change feet Y / body height. "
             "CONTINUITY: adjacent frames are in-betweens of ONE action. Limbs travel on ARCS. "
             "Never five copies of the same mid-pose. "
-            "ACTING: each silhouette must be obviously different at thumbnail size — "
-            "change BOTH legs, torso lean, AND hands/props. Frozen body + tiny wiggle = fail. "
-            "The flipbook canvas will be sized to the WIDEST pose; draw complete silhouettes. "
-            f"{STRIP_SEPARATION} "
+            f"{acting_rule}"
+            "Draw complete silhouettes. "
+            f"{strip_separation_for(slot_id)} "
             f"{style_note} "
             "No stage, no map, no floor texture."
         )
-        if slot_id in LOOP_SLOTS:
+        if line == "deskpet" and slot_id == "idle":
+            parts.append(f"LOOP: frame {n} must blend back into frame 1 without a turn or step.")
+        elif slot_id in LOOP_SLOTS:
             parts.append(f"LOOP: frame {n} must blend back into frame 1.")
         elif slot_id in FALL_SLOTS:
             parts.append(
                 f"ONE-SHOT FALL: frame {n} is DOWN/still. Do NOT loop back to a standing or flying idle."
             )
         else:
-            parts.append(
-                f"ONE complete action: frame {n} recovers toward ready or landing — "
-                "do not loop the attack itself."
-            )
+            if line == "deskpet":
+                parts.append(
+                    f"ONE complete desk-pet action: frame {n} resolves to the storyboard's requested end pose. "
+                    "Do not invent an attack recovery, landing, or turn."
+                )
+            else:
+                parts.append(
+                    f"ONE complete action: frame {n} recovers toward ready or landing — "
+                    "do not loop the attack itself."
+                )
         if slot_id in AIR_ACTING_SLOTS:
             parts.append(
                 "AIRBORNE ACTING: feet OFF the ground except the landing frame if any. "
@@ -1817,14 +1984,16 @@ def wrap_prompt(
         elif slot_id in FALL_SLOTS:
             parts.append(
                 f"KNOCKDOWN ACTING: the body DROPS. Frame 1 is hit, frame {n} is down. "
-                "Hip stays in the cell on standing frames; the down pose may lie fully horizontal "
-                "and MUST be drawn complete in a wider cell. Do not stand back up."
+                "Hip stays in the cell on standing frames. "
+                f"Frame {n} is a COMPACT knockdown that FITS the same cell width as standing "
+                "(knees-up on the back, or a side heap) — never a stretched corpse in a wider cell. "
+                "Do not stand back up."
             )
-        else:
+        elif line != "deskpet":
             parts.append(
                 "GROUND ACTING: feet on one shared baseline. Same feet Y, same hip X, same body scale."
             )
-        beat = SLOT_BEATS.get(slot_id)
+        beat = PORTRAIT_SLOT_BEATS.get(slot_id) if line == "deskpet" else SLOT_BEATS.get(slot_id)
         if beat:
             parts.append(beat)
         else:
@@ -1870,10 +2039,12 @@ def wrap_prompt(
             "Exactly 4 DIFFERENT cinematic keyframes in one horizontal strip. "
             "Keep the attached character design exactly. " + extra
         )
-    n_expect = int(slot.get("frames") or (4 if slot_id == "turnaround" else 5))
+    n_expect = int(slot.get("frames") or (4 if slot_id in {"turnaround", *FALL_SLOTS} else 5))
     if slot["kind"] == "sprite" and slot_id != "style" and n_expect > 1:
         body = enforce_strip_frame_count(body, n_expect)
     parts.append((body or "").strip())
+    if slot["kind"] == "sprite" and slot_id in FALL_SLOTS:
+        parts.append(FALL_COMPACT_OVERRIDE.format(n=n_expect))
     if slot["kind"] == "sprite" and slot_id != "style":
         n = n_expect
         if slot_id.startswith("fx_"):
@@ -1910,7 +2081,7 @@ def wrap_prompt(
                 f"in ONE horizontal row. Do NOT invent an extra person beyond {n}. "
                 f"If you would draw a 2x5 contact sheet, a bust row, or extra clones, "
                 f"stop and draw {n} instead. Adjacent silhouettes must differ at thumbnail size. "
-                f"{STRIP_SEPARATION} "
+                f"{strip_separation_for(slot_id)} "
                 f"{end_note} Limbs move on arcs, not teleport."
             )
     if developer_fix.strip():

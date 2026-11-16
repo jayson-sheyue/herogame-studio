@@ -1,16 +1,19 @@
-"""Google Cloud Text-to-Speech via Application Default Credentials."""
+"""Key-authenticated Gemini speech, with optional Cloud TTS key permissions."""
 
 from __future__ import annotations
 
 import base64
 import html
 import json
+from io import BytesIO
+import wave
 import re
 import urllib.error
 import urllib.request
-from functools import lru_cache
 
 from google.cloud import texttospeech
+from google.genai import types
+from vertex_client import VertexSettings, merge_settings, require_key, get_client, _friendly_error, redact
 
 from prompts import LINE_PERFORMANCE, VOICE_AGES, VOICE_LANGUAGES, VOICE_LINES, parse_line
 
@@ -151,8 +154,8 @@ GEMINI_VOICES = [
 ]
 
 GEMINI_MODELS = [
-    {"id": "gemini-2.5-flash-tts", "label": "Gemini 2.5 Flash TTS"},
-    {"id": "gemini-3.1-flash-tts-preview", "label": "Gemini 3.1 Flash TTS（情绪标签更强）"},
+    {"id": "gemini-3.1-flash-tts-preview", "label": "Gemini 3.1 Flash TTS"},
+    {"id": "gemini-2.5-flash-tts", "label": "Gemini 2.5 Flash TTS（按服务适配 ID）"},
     {"id": "gemini-2.5-pro-tts", "label": "Gemini 2.5 Pro TTS"},
 ]
 
@@ -202,7 +205,6 @@ def gemini_supports_language(code: str) -> bool:
     return tag in GEMINI_TTS_LANG_TAGS
 
 
-@lru_cache(maxsize=8)
 def cloud_language_codes(project: str = "") -> frozenset[str]:
     try:
         client = _client(project)
@@ -243,18 +245,17 @@ def tts_language_supported(code: str, *, project: str = "") -> dict:
             ),
         }
     gemini_ok = gemini_supports_language(code)
-    cloud_ok = _cloud_has_language(code, project)
+    cloud_ok = False  # Availability requires a separate, explicitly selected Cloud TTS call.
     if gemini_ok or cloud_ok:
         return {"gemini": gemini_ok, "cloud": cloud_ok, "ok": True, "detail": ""}
     return {
         "gemini": False,
         "cloud": False,
         "ok": False,
-        "detail": f"当前项目下列不出「{label}」（{code}）的可用音色。可换语种或用录音克隆。",
+        "detail": f"当前 Gemini 配音不支持「{label}」（{code}）的可用音色。可换语种或用录音克隆。",
     }
 
 
-@lru_cache(maxsize=64)
 def cloud_voices_for_language(language_code: str, project: str = "") -> tuple[dict, ...]:
     language_code = (language_code or "").strip()
     if not language_code:
@@ -310,14 +311,16 @@ def _language_code(voice_name: str) -> str:
     return "cmn-CN"
 
 
-def _client(project: str = "") -> texttospeech.TextToSpeechClient:
-    # REST avoids gRPC's local sidecar (127.0.0.1) which fails with
-    # "Operation not permitted" under some process sandboxes.
-    options = {"quota_project_id": project} if project else None
-    kwargs: dict = {"transport": "rest"}
-    if options:
-        kwargs["client_options"] = options
-    return texttospeech.TextToSpeechClient(**kwargs)
+def _client(project: str = "", settings: VertexSettings | None = None) -> texttospeech.TextToSpeechClient:
+    cfg = merge_settings(settings)
+    require_key(cfg)
+    if cfg.resolved_provider == "vertex":
+        raise ValueError("Vertex Express Key 不提供独立 Cloud TTS 接口。请选择 Gemini-TTS；旧版克隆需单独的 Cloud TTS API 权限。")
+    # Explicit api_key uses APIKeyCredentials and never calls google.auth.default.
+    try:
+        return texttospeech.TextToSpeechClient(transport="rest", client_options={"api_key": cfg.api_key})
+    except Exception as exc:
+        raise RuntimeError("Cloud TTS 客户端初始化失败：" + _friendly_error(exc, cfg.api_key)) from None
 
 
 def _voice_dict(name: str, gender: str, *, engine: str = "cloud", label: str = "") -> dict:
@@ -331,7 +334,6 @@ def _voice_dict(name: str, gender: str, *, engine: str = "cloud", label: str = "
     }
 
 
-@lru_cache(maxsize=8)
 def list_voices(project: str = "") -> list[dict]:
     client = _client(project)
     voices: list[dict] = []
@@ -453,16 +455,8 @@ def available_languages(project: str = "") -> list[dict]:
 
 
 def available_voices(project: str = "") -> list[dict]:
-    gemini = [
-        _voice_dict(v["name"], v["gender"], engine="gemini", label=v["label"]) for v in GEMINI_VOICES
-    ]
-    try:
-        cloud = list_voices(project)
-        if not cloud:
-            cloud = [_voice_dict(v["name"], v["gender"]) for v in FALLBACK_VOICES]
-    except Exception:
-        list_voices.cache_clear()
-        cloud = [_voice_dict(v["name"], v["gender"]) for v in FALLBACK_VOICES]
+    gemini = [_voice_dict(v["name"], v["gender"], engine="gemini", label=v["label"]) for v in GEMINI_VOICES]
+    cloud = [_voice_dict(v["name"], v["gender"], label=_label(v["name"], v["gender"]) + " · 需 Cloud TTS 权限") for v in FALLBACK_VOICES]
     return gemini + cloud
 
 
@@ -588,7 +582,7 @@ def _clone_error_message(status: int, body: str) -> str:
     if "consent" in low:
         return "授权口播未通过。请用同一人、同一环境，一字不差地朗读授权文案后再传。原始错误：" + body[:240]
     if "SERVICE_DISABLED" in body or "has not been used" in body:
-        return "Cloud Text-to-Speech API 未开通。请运行：gcloud services enable texttospeech.googleapis.com"
+        return "此 Key 未开通 Cloud Text-to-Speech 权限。请检查 API 限制与服务开通状态，或选择 Gemini-TTS。"
     return f"采集声线失败（HTTP {status}）：{body[:320]}"
 
 
@@ -600,22 +594,16 @@ def generate_clone_key(
     reference_encoding: str = "LINEAR16",
     consent_encoding: str = "LINEAR16",
     project: str = "",
+    settings: VertexSettings | None = None,
 ) -> str:
     if not reference or not consent:
         raise ValueError("需要音色样本和授权口播两段录音。")
     if len(reference) < 8000 or len(consent) < 4000:
         raise ValueError("录音太短。音色样本建议约 10 秒，授权口播把整句念完。")
-    try:
-        import google.auth
-        from google.auth.transport.requests import Request
-    except ImportError as exc:
-        raise RuntimeError("缺少 google-auth，无法调用克隆声线接口。") from exc
-
-    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    if not creds.valid:
-        creds.refresh(Request())
-    if not getattr(creds, "token", None):
-        creds.refresh(Request())
+    cfg = merge_settings(settings)
+    require_key(cfg)
+    if cfg.resolved_provider == "vertex":
+        raise ValueError("Vertex Express 不提供旧版 Cloud 声线克隆接口。请使用 Gemini 预置声线，或配置具有 Cloud TTS 权限的 Key。")
 
     ref_bytes = linear16_payload(reference) if reference_encoding == "LINEAR16" else reference
     consent_bytes = linear16_payload(consent) if consent_encoding == "LINEAR16" else consent
@@ -632,11 +620,9 @@ def generate_clone_key(
         "language_code": language_code or "cmn-CN",
     }
     headers = {
-        "Authorization": f"Bearer {creds.token}",
+        "x-goog-api-key": cfg.api_key,
         "Content-Type": "application/json",
     }
-    if project:
-        headers["x-goog-user-project"] = project
     req = urllib.request.Request(
         CLONE_KEY_URL,
         data=json.dumps(payload).encode("utf-8"),
@@ -648,13 +634,55 @@ def generate_clone_key(
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         err_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(_clone_error_message(exc.code, err_body)) from exc
+        raise RuntimeError(_clone_error_message(exc.code, redact(err_body, cfg.api_key))) from exc
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"采集声线失败：{exc}") from exc
+        raise RuntimeError(f"采集声线失败：{_friendly_error(exc, cfg.api_key)}") from exc
     key = str(data.get("voiceCloningKey") or data.get("voice_cloning_key") or "").strip()
     if not key:
         raise RuntimeError("接口没有返回声线密钥。")
     return key
+
+
+def _gemini_speech(text: str, *, settings: VertexSettings, voice_name: str, model_name: str, style: str, language: str) -> bytes:
+    model = model_name or "gemini-3.1-flash-tts-preview"
+    if settings.resolved_provider == "ai_studio":
+        model = {"gemini-2.5-flash-tts": "gemini-2.5-flash-preview-tts",
+                 "gemini-2.5-pro-tts": "gemini-2.5-pro-preview-tts"}.get(model, model)
+    try:
+        response = get_client(settings.provider, settings.api_key).models.generate_content(
+            model=model,
+            contents=f"{style}\nRead only the following transcript in {language}:\n{text}",
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name))),
+            ),
+        )
+    except Exception as exc:
+        raise RuntimeError("Gemini 配音失败：" + _friendly_error(exc, settings.api_key)) from None
+    for candidate in response.candidates or []:
+        for part in (candidate.content.parts if candidate.content else []) or []:
+            inline = part.inline_data
+            if not inline or not inline.data:
+                continue
+            data = inline.data
+            mime = (inline.mime_type or "").lower()
+            if data.startswith(b"RIFF") or mime in {"audio/mpeg", "audio/mp3"}:
+                return data
+            if "l16" not in mime and "pcm" not in mime:
+                raise RuntimeError("配音返回了暂不支持的音频格式，未写入文件。")
+            rate = re.search(r"rate=(\d+)", mime)
+            sample_rate = int(rate.group(1)) if rate else 24000
+            if not 8000 <= sample_rate <= 96000 or len(data) % 2:
+                raise RuntimeError("配音返回的 PCM 数据无效，未写入文件。")
+            output = BytesIO()
+            with wave.open(output, "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(sample_rate)
+                wav.writeframes(data)
+            return output.getvalue()
+    raise RuntimeError("配音模型没有返回音频。请检查所选模型是否支持音频输出及此 Key 的权限。")
 
 
 def synthesize(
@@ -677,13 +705,26 @@ def synthesize(
     clone_language: str = "cmn-CN",
     tts_language: str = "cmn-CN",
     voice_age: str = "adult",
+    settings: VertexSettings | None = None,
 ) -> bytes:
     text = (text or "").strip()
     if not text:
         raise ValueError("台词是空的。")
     if len(_strip_tags(text)) > 80:
         raise ValueError("台词太长，格斗喊招请控制在 80 字内。")
-    client = _client(project)
+    cfg = merge_settings(settings)
+    require_key(cfg)
+    if engine != "clone" and _is_gemini(engine, voice_name, model_name):
+        lang = (tts_language or "cmn-CN").strip()
+        if not gemini_supports_language(lang):
+            raise ValueError(f"当前 Gemini 配音不支持语言 {lang}，请换语种；不会自动切换其他引擎。")
+        if voice_name not in GEMINI_VOICE_NAMES:
+            raise ValueError("请选择 Gemini 预置声线，不能将 Cloud 声线传给 Gemini 配音。")
+        style = prompt or style_prompt(display_name=display_name, persona=persona, line_id=line_id,
+                                       emotion=emotion, gender=gender, tts_language=lang, voice_age=voice_age)
+        return _gemini_speech(tagged_text(text, tag, line_id), settings=cfg, voice_name=voice_name,
+                              model_name=model_name, style=style, language=lang)
+    client = _client(project, cfg)
     use_clone = engine == "clone"
     if use_clone:
         if not clone_key:
@@ -701,113 +742,52 @@ def synthesize(
                 ),
             )
         except Exception as exc:  # noqa: BLE001
-            msg = str(exc)
+            msg = _friendly_error(exc)
             if "SERVICE_DISABLED" in msg or "has not been used" in msg:
                 raise RuntimeError(
-                    "Cloud Text-to-Speech API 未开通。请运行：gcloud services enable texttospeech.googleapis.com"
+                    "此 Key 未开通 Cloud Text-to-Speech 权限。请检查 API 限制与服务开通状态，或选择 Gemini-TTS。"
                 ) from exc
-            raise RuntimeError(f"克隆声线合成失败：{exc}") from exc
+            raise RuntimeError(f"克隆声线合成失败：{_friendly_error(exc, cfg.api_key)}") from exc
         if not response.audio_content:
             raise RuntimeError("TTS 没有返回音频。")
         return response.audio_content
-    use_gemini = _is_gemini(engine, voice_name, model_name)
-    lang = (tts_language or "").strip() or "cmn-CN"
-    support = tts_language_supported(lang, project=project)
-    if not support["ok"]:
-        raise ValueError(support["detail"] or f"不支持语言 {lang}")
-    # Gemini 不支持该语种时，自动改用 Cloud 朗读（若有音色）
-    if use_gemini and not support["gemini"]:
-        if support["cloud"]:
-            fallback = pick_cloud_voice(lang, gender=gender, project=project)
-            if not fallback:
-                raise ValueError(support["detail"] or f"不支持语言 {lang}")
-            use_gemini = False
-            voice_name = fallback
-            engine = "cloud"
-        else:
-            raise ValueError(
-                f"Gemini-TTS 不支持「{VOICE_LANGUAGES.get(lang, lang)}」（{lang}）。"
-                + (support["detail"] or "请改用 Cloud 朗读或录音克隆。")
-            )
+    lang = (tts_language or "cmn-CN").strip()
     try:
-        if use_gemini:
-            model = model_name or "gemini-2.5-flash-tts"
-            spoken = tagged_text(text, tag, line_id)
-            style = prompt or style_prompt(
-                display_name=display_name,
-                persona=persona,
-                line_id=line_id,
-                emotion=emotion,
-                gender=gender,
-                tts_language=lang,
-                voice_age=voice_age or "adult",
-            )
-            kwargs = {
-                "input": texttospeech.SynthesisInput(text=spoken, prompt=style),
-                "voice": texttospeech.VoiceSelectionParams(
-                    language_code=lang,
-                    name=voice_name if voice_name in GEMINI_VOICE_NAMES else "Charon",
-                    model_name=model,
-                ),
-                "audio_config": texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3),
-            }
-            response = client.synthesize_speech(**kwargs)
-        else:
-            cloud_lang = _language_code(voice_name)
-            # 外语台词 + 中文 Cloud 声线会念错；优先按所选语言换同性别 Cloud 音色
-            if lang and cloud_lang.split("-")[0].lower() != _lang_tag(lang):
-                alt = pick_cloud_voice(lang, gender=gender, project=project)
-                if alt:
-                    voice_name = alt
-                    cloud_lang = _language_code(voice_name) or lang
-            response = client.synthesize_speech(
-                input=texttospeech.SynthesisInput(ssml=_ssml(text, line_id, speaking_rate, pitch)),
-                voice=texttospeech.VoiceSelectionParams(
-                    language_code=cloud_lang or lang,
-                    name=voice_name,
-                ),
-                audio_config=texttospeech.AudioConfig(
-                    audio_encoding=texttospeech.AudioEncoding.MP3,
-                    speaking_rate=min(1.25, max(0.7, speaking_rate)),
-                    pitch=min(8.0, max(-8.0, pitch)),
-                ),
-            )
+        cloud_lang = _language_code(voice_name)
+        # 外语台词 + 中文 Cloud 声线会念错；优先按所选语言换同性别 Cloud 音色
+        if lang and _lang_tag(cloud_lang) != _lang_tag(lang):
+            raise ValueError("所选 Cloud 声线与台词语种不一致，请选择相同语种的声线或使用 Gemini-TTS。")
+        response = client.synthesize_speech(
+            input=texttospeech.SynthesisInput(ssml=_ssml(text, line_id, speaking_rate, pitch)),
+            voice=texttospeech.VoiceSelectionParams(
+                language_code=cloud_lang or lang,
+                name=voice_name,
+            ),
+            audio_config=texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3,
+                speaking_rate=min(1.25, max(0.7, speaking_rate)),
+                pitch=min(8.0, max(-8.0, pitch)),
+            ),
+        )
     except ValueError:
         raise
     except Exception as exc:
-        msg = str(exc)
+        msg = _friendly_error(exc)
         if "SERVICE_DISABLED" in msg or "has not been used" in msg or "disabled" in msg.lower():
             raise RuntimeError(
-                "Cloud Text-to-Speech API 未开通。请运行：gcloud services enable texttospeech.googleapis.com"
+                "此 Key 未开通 Cloud Text-to-Speech 权限。请检查 API 限制与服务开通状态，或选择 Gemini-TTS。"
             ) from exc
         if "language code" in msg.lower() and "not supported" in msg.lower():
             raise RuntimeError(
                 f"当前引擎不支持语言 {lang}。"
                 "Gemini-TTS 语种有限；高棉语等需录音克隆或换有音色的语种。"
-                f" 原始错误：{exc}"
+                f" 错误：{_friendly_error(exc, cfg.api_key)}"
             ) from exc
-        if use_gemini and ("model" in msg.lower() or "not found" in msg.lower() or "invalid" in msg.lower()):
-            raise RuntimeError(
-                f"Gemini-TTS 模型不可用（{model_name or 'gemini-2.5-flash-tts'}）。"
-                "可改选 Gemini 2.5 Flash TTS，或确认项目已开通 Cloud TTS。"
-                f" 原始错误：{exc}"
-            ) from exc
-        raise RuntimeError(f"TTS 失败：{exc}") from exc
+        raise RuntimeError(f"TTS 失败：{_friendly_error(exc, cfg.api_key)}") from exc
     if not response.audio_content:
         raise RuntimeError("TTS 没有返回音频。")
     return response.audio_content
 
 
 def probe_tts(project: str = "") -> dict:
-    try:
-        voices = list_voices(project)
-        return {
-            "ok": True,
-            "detail": f"Cloud TTS 可用 · Gemini-TTS 演戏 + {len(voices)} 条朗读声线",
-        }
-    except Exception as exc:  # noqa: BLE001
-        list_voices.cache_clear()
-        return {
-            "ok": False,
-            "detail": f"{exc}。若未开通请运行 gcloud services enable texttospeech.googleapis.com",
-        }
+    return {"ok": None, "detail": "配音声线目录仅供选择；尚未执行收费生成，实际可用性取决于 Key、模型和 API 权限。"}
