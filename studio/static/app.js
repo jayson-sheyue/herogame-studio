@@ -68,58 +68,63 @@ const $ = (id) => document.getElementById(id);
 
 function vertexFromForm() {
   return {
-    project: $("gcpProject").value.trim(),
-    location: $("gcpLocation").value.trim(),
-    image_location: $("gcpImageLocation").value.trim(),
-    text_model: $("textModel").value.trim(),
-    image_model: $("imageModel").value.trim(),
+    provider: $("apiProvider")?.value || "auto",
+    text_model: $("textModel")?.value.trim() || "",
+    image_model: $("imageModel")?.value.trim() || "",
   };
 }
 
-function settingsKey() {
-  return `${SETTINGS_KEY}:${state.line || "shared"}`;
-}
+function settingsKey() { return `${SETTINGS_KEY}:${state.line || "shared"}`; }
 
 function readSavedVertex() {
   try {
-    const lineKey = settingsKey();
-    const raw = localStorage.getItem(lineKey);
-    if (raw) return JSON.parse(raw);
-    // Do not silently reuse the other product line's project.
-    // Legacy unscoped key only seeds the "shared" (no-line) state.
-    if (!state.line) {
-      const legacy = localStorage.getItem(SETTINGS_KEY);
-      if (legacy) return JSON.parse(legacy);
-    }
-  } catch {
-    /* ignore */
-  }
-  return {};
+    const value = JSON.parse(localStorage.getItem(settingsKey()) || "{}");
+    // Whitelist ordinary settings. Never restore a key from browser storage.
+    return {provider:value.provider, text_model:value.text_model, image_model:value.image_model};
+  } catch { return {}; }
 }
 
 function applyVertex(v = {}) {
-  if (v.project != null) $("gcpProject").value = v.project;
-  if (v.location != null) $("gcpLocation").value = v.location;
-  if (v.image_location != null) $("gcpImageLocation").value = v.image_location;
-  if (v.text_model != null) $("textModel").value = v.text_model;
-  if (v.image_model != null) $("imageModel").value = v.image_model;
+  if (v.provider != null && $("apiProvider")) $("apiProvider").value = v.provider;
+  if (v.text_model != null && $("textModel")) $("textModel").value = v.text_model;
+  if (v.image_model != null && $("imageModel")) $("imageModel").value = v.image_model;
+  if (v.remember_api_key != null && $("rememberApiKey")) $("rememberApiKey").checked = !!v.remember_api_key;
+  if (v.api_key_set != null) {
+    const labels = {system:"系统凭据库", session:"本次服务会话", environment:"服务端环境变量", missing:"未设置"};
+    if ($("apiKeyStatus")) $("apiKeyStatus").textContent = v.api_key_set ? `密钥已设置 · ${labels[v.key_storage] || "服务端"}；输入新 Key 可替换。` : "当前产品线尚未设置 API Key。";
+    if ($("apiKey")) $("apiKey").placeholder = v.api_key_set ? "已设置；留空保留，输入新 Key 替换" : "粘贴 AQ. 或 AI… 开头的 Key";
+  }
 }
 
 function persistVertex() {
   localStorage.setItem(settingsKey(), JSON.stringify(vertexFromForm()));
 }
 
+function renderKeyHealth(v = {}) {
+  const el = $("health");
+  if (!el) return;
+  el.className = `health ${v.api_key_set ? "" : "bad"}`;
+  const label = v.resolved_provider === "vertex" ? "Vertex Express" : "Google AI Studio";
+  el.textContent = v.api_key_set ? `${label} · Key 已设置（连接状态见测试结果）` : (v.error || "请先设置本产品线 API Key");
+}
+
 function loadVertexForCurrentLine(health = {}) {
   const saved = readSavedVertex();
-  applyVertex({
-    project: saved.project || "",
-    location: saved.location || health.location || "global",
-    image_location: saved.image_location || health.image_location || saved.location || health.location || "global",
-    text_model: saved.text_model || health.text_model || "gemini-2.5-flash",
-    image_model: saved.image_model || health.image_model || "gemini-2.5-flash-image",
-  });
-  // If this line never saved a project, leave blank even if health has another line's project.
-  if (!saved.project) $("gcpProject").value = "";
+  applyVertex({provider:health.provider || saved.provider || "auto",
+    text_model:health.text_model || saved.text_model || "gemini-3.8-flash",
+    image_model:health.image_model || saved.image_model || "gemini-2.5-flash-image",
+    ...health});
+  if ($("apiKey")) $("apiKey").value = "";
+  if ($("rememberApiKey")) $("rememberApiKey").checked = !!health.remember_api_key;
+  if ($("authChecks")) $("authChecks").textContent = "";
+  renderKeyHealth(health);
+  // Overwrite legacy browser settings with the non-secret whitelist.
+  persistVertex();
+}
+
+async function refreshKeySettings() {
+  const result = await api("/api/settings");
+  loadVertexForCurrentLine(result.settings || {});
 }
 
 function sessionKey() {
@@ -211,6 +216,9 @@ async function workspaceFetch(path, opts = {}) {
 }
 
 async function api(path, opts = {}) {
+  if (opts.method === "POST" && /\/(infer(?:-slot)?|generate|speak)$|^\/api\/voice\/(commit|clone)$/.test(path) && $("apiKey")?.value.trim()) {
+    throw new Error("API Key 尚未保存。请先点击「保存设置」或「测试连接并保存」，再开始生成。");
+  }
   const headers = { ...(opts.headers || {}) };
   if (!(opts.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
@@ -833,7 +841,7 @@ async function pickProductLine(kind) {
   state.hasProject = Boolean(data.has_project);
   state.needsGate = false;
   applyWorkspace(data);
-  loadVertexForCurrentLine();
+  await refreshKeySettings();
   if (data.style) applyStyle(data.style);
   if (data.has_project && data.workspace?.root) {
     enterWorkspaceShell();
@@ -2720,11 +2728,11 @@ async function commitVoice() {
 function renderChecks(checks = {}) {
   const box = $("authChecks");
   const labels = {
-    adc: "ADC",
+    api_key: "API Key",
     client: "提示词客户端",
     text_model: "生提示词模型",
     image_model: "生图模型",
-    tts: "Cloud TTS",
+    tts: "配音能力",
   };
   const keys = Object.keys(checks);
   if (!keys.length) {
@@ -2734,7 +2742,7 @@ function renderChecks(checks = {}) {
   box.innerHTML = keys
     .map((k) => {
       const item = checks[k] || {};
-      return `<li class="${item.ok ? "ok" : "bad"}">${item.ok ? "通过" : "失败"} · ${labels[k] || k}：${item.detail || ""}</li>`;
+      return `<li class="${item.ok == null ? "" : item.ok ? "ok" : "bad"}">${item.ok == null ? "未测试" : item.ok ? "通过" : "失败"} · ${esc(labels[k] || k)}：${esc(item.detail || "")}</li>`;
     })
     .join("");
 }
@@ -3577,14 +3585,7 @@ async function refreshHealth() {
     renderStageList();
     loadVertexForCurrentLine(h);
     const el = $("health");
-    if (h.adc) {
-      el.className = "health ok";
-      const proj = $("gcpProject").value || "（本产品线未填项目）";
-      el.textContent = `ADC 可用 · 当前产品线项目 ${proj}`;
-    } else {
-      el.className = "health bad";
-      el.textContent = h.error || "ADC 未就绪。请先运行 gcloud auth application-default login";
-    }
+    renderKeyHealth(h);
     loadTtsVoices().catch(() => {});
 
     const sessLine = sessionStorage.getItem(LINE_SESSION_KEY) || "";
@@ -3665,44 +3666,44 @@ async function refreshHealth() {
   }
 }
 
-async function testAuth() {
-  persistVertex();
+async function saveApiSettings({ test = false, clear = false } = {}) {
+  const keyField = $("apiKey");
+  const draft = keyField?.value || "";
+  const ordinary = vertexFromForm();
+  const snapshot = JSON.stringify(ordinary);
+  const body = {...ordinary, remember_api_key:!!$("rememberApiKey")?.checked};
+  if (clear) body.clear_api_key = true;
+  else if (draft.trim()) body.api_key = draft.trim();
   try {
-    await runJob({
-      freeze: true,
-      buttons: ["testAuthBtn"],
-      label: "测试中…",
-      status: "正在用当前设定测试鉴权…",
-      fn: async () => {
-        $("health").textContent = "正在用当前设定测试鉴权…";
-        $("health").className = "health";
-        const result = await api("/api/test-auth", {
-          method: "POST",
-          body: JSON.stringify(vertexFromForm()),
-        });
-        if (result.settings) applyVertex(result.settings);
-        persistVertex();
-        renderChecks(result.checks);
-        const el = $("health");
+    await runJob({freeze:true, buttons:["testAuthBtn", "saveApiSettingsBtn", "clearApiKeyBtn"],
+      label:test ? "测试中…" : "保存中…", status:test ? "正在检查模型接口（不生成内容）…" : "正在保存本产品线设置…",
+      fn:async () => {
+        const result = await api(test ? "/api/test-auth" : "/api/settings", {method:"POST", body:JSON.stringify(body)});
+        if (result.checks) renderChecks(result.checks);
         if (result.ok) {
-          el.className = "health ok";
-          el.textContent = `鉴权通过 · ${result.settings.project} · ${result.settings.location} / ${result.settings.image_location} · ${result.settings.text_model} / ${result.settings.image_model}`;
-          setStatus("这组项目和模型可以调用。", "ok");
+          if (!test) renderChecks({});
+          if (keyField && keyField.value === draft) keyField.value = "";
+          if (JSON.stringify(vertexFromForm()) === snapshot) applyVertex(result.settings || {});
+          persistVertex();
+          renderKeyHealth(result.settings || {});
+          if (test) { $("health").className = "health ok"; $("health").textContent = "连接检查通过 · 尚未验证实际生图或配音"; }
+          setStatus(clear ? "本产品线密钥已清除；环境变量也不会在本次会话中自动补回。" : test ? "连接检查通过，设置已保存；未执行收费生成。" : "设置已保存，下一个任务生效。", "ok");
         } else {
-          el.className = "health bad";
-          el.textContent = "鉴权未完全通过，看左侧逐项结果。";
-          setStatus("鉴权失败，请改项目 ID 或模型名后再测。", "bad");
+          $("health").className = "health bad";
+          $("health").textContent = "连接检查未通过，原设置与当前输入已保留。";
+          setStatus("请检查 Key 的服务来源、权限、配额及模型名后重试。", "bad");
         }
-      },
-    });
+      }});
   } catch (err) {
     $("health").className = "health bad";
     $("health").textContent = String(err.message || err);
     setStatus(String(err.message || err), "bad");
   } finally {
-    $("testAuthBtn").disabled = false;
+    for (const id of ["testAuthBtn", "saveApiSettingsBtn", "clearApiKeyBtn"]) if ($(id)) $(id).disabled = false;
   }
 }
+
+async function testAuth() { return saveApiSettings({test:true}); }
 
 async function loadHeroes() {
   const { heroes } = await api("/api/heroes");
@@ -7281,6 +7282,11 @@ $("bodyScaleFps")?.addEventListener("change", () => {
   if (bodyWsFrameCount()) armBodyScalePlay();
 });
 $("testAuthBtn")?.addEventListener("click", testAuth);
+$("saveApiSettingsBtn")?.addEventListener("click", () => saveApiSettings());
+$("clearApiKeyBtn")?.addEventListener("click", () => saveApiSettings({clear:true}));
+$("apiKey")?.addEventListener("input", () => {
+  if ($("apiKeyStatus")) $("apiKeyStatus").textContent = "输入尚未保存，请先保存或测试连接。";
+});
 $("styleInferBtn")?.addEventListener("click", inferStyle);
 $("styleGenBtn")?.addEventListener("click", generateStyle);
 $("stageInferBtn")?.addEventListener("click", inferStage);

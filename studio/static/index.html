@@ -32,7 +32,7 @@
   <section id="fileLaunchHelp" aria-labelledby="fileLaunchTitle">
     <div class="launch-mark">作图工坊 · 本机启动</div>
     <h1 id="fileLaunchTitle">请从本机服务进入工坊</h1>
-    <p>你打开了网页源文件。工坊需要本机服务来读取工程、保存作品和连接 Vertex AI。</p>
+    <p>你打开了网页源文件。工坊需要本机服务来读取工程、保存作品和连接 AI 服务。</p>
     <ol>
       <li>在项目根目录双击 <code>start.command</code>（macOS），等待浏览器自动打开。</li>
       <li>使用期间保持启动终端开启；结束时按 <code>Ctrl+C</code>。</li>
@@ -54,7 +54,7 @@
           <span>风格锚点 · 动作清单 · 去青导出透明帧</span>
         </button>
       </div>
-      <p class="tiny">本机 ADC 登录两边共用；GCP 项目 ID / 模型按<strong>产品线分别记忆</strong>。工程文件夹与资产目录完全隔离。</p>
+      <p class="tiny">API Key / 服务来源 / 模型按<strong>产品线分别记忆</strong>。工程文件夹与资产目录完全隔离。</p>
     </div>
   </div>
 
@@ -118,28 +118,35 @@
       </details>
 
       <details class="fold" open>
-        <summary>Vertex 设定</summary>
+        <summary>API Key 设置</summary>
         <div class="fold-body">
-          <label>GCP 项目 ID
-            <input id="gcpProject" placeholder="your-gcp-project" autocomplete="off" />
+          <label>服务来源
+            <select id="apiProvider">
+              <option value="auto">自动识别（AQ. → Express，AI… → AI Studio）</option>
+              <option value="vertex">Vertex AI Express</option>
+              <option value="ai_studio">Google AI Studio</option>
+            </select>
           </label>
-          <label>生提示词模型区域
-            <input id="gcpLocation" placeholder="global 或 us-central1" />
+          <label>API Key
+            <input id="apiKey" type="password" placeholder="粘贴 AQ. 或 AI… 开头的 Key" autocomplete="off" spellcheck="false" autocapitalize="off" />
           </label>
-          <label>生图模型区域
-            <input id="gcpImageLocation" placeholder="global 或 us-central1" />
-          </label>
+          <p id="apiKeyStatus" class="tiny" role="status">当前产品线尚未设置 API Key。</p>
+          <label class="check"><input id="rememberApiKey" type="checkbox" />记住密钥（系统凭据库）</label>
           <label>生提示词模型
-            <input id="textModel" placeholder="gemini-2.5-flash" />
+            <input id="textModel" placeholder="gemini-3.8-flash" />
           </label>
           <label>生图模型
             <input id="imageModel" placeholder="gemini-2.5-flash-image" />
           </label>
           <div class="actions">
-            <button id="testAuthBtn" class="primary" type="button">测试鉴权</button>
+            <button id="saveApiSettingsBtn" type="button">保存设置</button>
+            <button id="testAuthBtn" class="primary" type="button">测试连接并保存</button>
+            <button id="clearApiKeyBtn" type="button">清除密钥</button>
           </div>
           <ul class="checks" id="authChecks"></ul>
-          <p class="tiny">鉴权走本机 <code>gcloud auth application-default login</code>。通过后记住<strong>当前产品线</strong>这组设定（对战 / 桌宠互不覆盖）。生图区域留空则沿用提示词区域。</p>
+          <p class="tiny">默认仅在本次服务会话中保留密钥；勾选后存入系统凭据库。密钥不写入工程或浏览器存储。两条产品线独立设置，下一个任务生效。</p>
+          <p class="tiny">前缀仅用于建议，Key 的来源以创建页面为准；识别不符时请手动选择。连接检查使用 countTokens，不执行生图或配音，不能证明所有生成能力可用。</p>
+          <p class="tiny"><a href="https://console.cloud.google.com/vertex-ai/studio/settings/api-keys" target="_blank" rel="noopener noreferrer">获取 Express Key</a> · <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">获取 AI Studio Key</a></p>
         </div>
       </details>
 
@@ -211,7 +218,7 @@
           </label>
           <label class="checkline"><input id="stageBgmUseImage" type="checkbox" checked /> 参考 stage.png（图生音乐）</label>
           <audio id="stageBgmPreview" controls style="width:100%;margin-top:8px" hidden></audio>
-          <p class="tiny">Lyria 3 Clip · 30 秒纯器乐循环，偏格斗压迫感（少欢快旋律）。读取 visual 与可选地图图，入库后写入 <code>stage.json</code> 的 <code>bgm</code>，对战端自动循环。</p>
+          <p class="tiny">Lyria 3 Clip · 需要 AI Studio Key 及模型权限；Express 暂不提供此接口。30 秒纯器乐循环，偏格斗压迫感（少欢快旋律）。读取 visual 与可选地图图，入库后写入 <code>stage.json</code> 的 <code>bgm</code>，对战端自动循环。</p>
           <p class="tiny">删除会清掉工坊设定、草稿，以及已入库的 <code>assets/game/stages/</code>。试玩端下一场对战不再出现这张图。</p>
         </div>
       </section>
@@ -330,13 +337,14 @@
           <label>配音引擎
             <select id="ttsEngine">
               <option value="gemini">Gemini-TTS（带情绪）</option>
-              <option value="cloud">Cloud 声线（朗读）</option>
+              <option value="cloud">Cloud 声线（需独立 API 权限）</option>
             </select>
           </label>
+          <p class="tiny">Gemini 配音使用当前 Key。Cloud 朗读 / 旧版克隆需独立 Cloud TTS 权限，Express 不支持。</p>
           <label id="ttsModelWrap">Gemini 模型
             <select id="ttsModel">
-              <option value="gemini-2.5-flash-tts">Gemini 2.5 Flash TTS</option>
               <option value="gemini-3.1-flash-tts-preview">Gemini 3.1 Flash TTS</option>
+              <option value="gemini-2.5-flash-tts">Gemini 2.5 Flash TTS（按服务适配 ID）</option>
               <option value="gemini-2.5-pro-tts">Gemini 2.5 Pro TTS</option>
             </select>
           </label>
@@ -436,7 +444,7 @@
   <footer class="statusbar">
     <span class="sb-pulse" aria-hidden="true"></span>
     <div id="statusBar" class="status">先锁游戏风格锚点，再画地图和英雄。</div>
-    <div class="sb-meta">Nano Banana · Vertex ADC</div>
+    <div class="sb-meta">Nano Banana · API Key</div>
   </footer>
 
   <dialog id="previewDlg">
@@ -590,7 +598,7 @@
   <script>
     if (location.protocol !== "file:") {
       const appScript = document.createElement("script");
-      appScript.src = "/static/app.js?v=101";
+      appScript.src = "/static/app.js?v=102";
       document.body.append(appScript);
     }
   </script>

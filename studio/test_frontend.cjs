@@ -256,3 +256,49 @@ test('quiet hero saves preserve assets and form focus instead of invoking the op
   assert.equal(app.run('state.assets.idle.url'), 'kept.png');
   assert.equal(app.fields.get('appearance').value, 'new appearance');
 });
+
+test('API key never enters browser settings and legacy key fields are ignored', () => {
+  const app = studio();
+  app.fields.set('apiKey',{value:'AI' + 'OfflineOnlyInput'});
+  app.fields.set('apiProvider',{value:'auto'});
+  app.fields.set('textModel',{value:'text-model'});
+  app.fields.set('imageModel',{value:'image-model'});
+  app.run('persistVertex()');
+  const stored = app.sandbox.localStorage.getItem(app.run('settingsKey()'));
+  assert.equal(stored.includes('OfflineOnlyInput'),false);
+  assert.equal(stored.includes('api_key'),false);
+  app.sandbox.localStorage.setItem(app.run('settingsKey()'), JSON.stringify({api_key:'legacy-placeholder',provider:'vertex',text_model:'text'}));
+  assert.equal(app.run('readSavedVertex().api_key'),undefined);
+});
+
+test('failed key test preserves input and successful save cannot erase a newer key draft', async () => {
+  const app = studio();
+  const key = {value:'AI'+'OfflineOldInput'};
+  app.fields.set('apiKey',key);
+  app.fields.set('apiProvider',{value:'auto'});
+  app.fields.set('health',{});
+  app.fields.set('authChecks',{});
+  app.run('runJob = async options => options.fn()');
+  app.sandbox.api = async () => ({ok:false, checks:{api_key:{ok:false, detail:'denied'}}});
+  await app.run('testAuth()');
+  assert.equal(key.value,'AI'+'OfflineOldInput');
+  assert.match(app.fields.get('health').textContent,/原设置与当前输入已保留/);
+  const response = deferred();
+  app.sandbox.api = () => response.promise;
+  const save = app.run('saveApiSettings()');
+  key.value = 'AI'+'OfflineNewerInput';
+  response.resolve({ok:true,settings:{api_key_set:true,provider:'auto',resolved_provider:'ai_studio',key_storage:'session'}});
+  await save;
+  assert.equal(key.value,'AI'+'OfflineNewerInput');
+  assert.equal(app.fields.get('authChecks').innerHTML,'');
+  assert.equal(app.sandbox.localStorage.getItem(app.run('settingsKey()')).includes('Offline'),false);
+});
+
+test('unsaved key blocks generation with an actionable message before any request', async () => {
+  const app=studio();
+  app.fields.set('apiKey',{value:'AQ.'+'OfflinePendingInput'});
+  let called=false;
+  app.sandbox.fetch=async()=>{called=true;};
+  await assert.rejects(app.run('api("/api/style/generate",{method:"POST",body:"{}"})'),/尚未保存/);
+  assert.equal(called,false);
+});

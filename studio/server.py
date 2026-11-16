@@ -12,13 +12,14 @@ import time
 from io import BytesIO
 from pathlib import Path
 
-from storage import write_json
+from storage import write_json, write_bytes
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 from workspace_guard import WorkspaceRoute
 
 from combat import normalize_moves, sync_moves_into_fighter
@@ -185,18 +186,25 @@ app.router.route_class = WorkspaceRoute
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(_request, exc):
+    errors = [{"loc": error["loc"], "msg": error["msg"], "type": error["type"]} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
 class VertexSettingsBody(BaseModel):
-    project: str = ""
-    location: str = ""
-    image_location: str = ""
+    provider: str = ""
+    api_key: SecretStr | None = None
+    remember_api_key: bool | None = None
+    clear_api_key: bool = False
     text_model: str = ""
     image_model: str = ""
 
     def to_settings(self) -> VertexSettings:
         return VertexSettings(
-            project=self.project,
-            location=self.location,
-            image_location=self.image_location,
+            provider=self.provider,
+            api_key=self.api_key.get_secret_value() if self.api_key else "",
             text_model=self.text_model,
             image_model=self.image_model,
         )
@@ -1023,10 +1031,21 @@ def _tts():
     return available_voices, probe_tts, synthesize
 
 
+def _voice_output_path(path: Path, audio: bytes) -> Path:
+    return path.with_suffix(".wav") if audio.startswith(b"RIFF") else path
+
+
+def _newest_audio(path: Path) -> Path:
+    candidates = [candidate for candidate in (path, path.with_suffix(".wav")) if candidate.is_file()]
+    return max(candidates, key=lambda candidate: candidate.stat().st_mtime_ns) if candidates else path
+
+
 def _voice_assets(hero_id: str) -> dict:
     assets = {}
     for slot in VOICE_LINES:
-        view = _asset_view(draft_voice_mp3(hero_id, slot["id"]), committed_voice_mp3(hero_id, slot["id"]))
+        draft = _newest_audio(draft_voice_mp3(hero_id, slot["id"]))
+        game = _newest_audio(game_voice_mp3(hero_id, slot["id"]))
+        view = _asset_view(draft, game if game.exists() else committed_voice_mp3(hero_id, slot["id"]))
         if view["url"]:
             assets[slot["id"]] = view
     return assets
@@ -1395,20 +1414,32 @@ def health() -> dict:
 
 @app.post("/api/settings")
 def write_settings(body: VertexSettingsBody) -> dict:
-    saved = save_settings(body.to_settings(), line=current_line())
-    return {"ok": True, "settings": saved.__dict__, "line": current_line()}
+    try:
+        saved = save_settings(body.to_settings(), line=current_line(),
+                              remember_api_key=body.remember_api_key, clear_api_key=body.clear_api_key)
+        return {"ok": True, "settings": saved.public(), "line": current_line()}
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc)) from None
+
+
+@app.get("/api/settings")
+def read_settings() -> dict:
+    return {"settings": vertex_status(), "line": current_line()}
 
 
 @app.post("/api/test-auth")
 def test_auth(body: VertexSettingsBody) -> dict:
-    result = probe(body.to_settings())
-    project = (result.get("settings") or {}).get("project") or body.project or ""
     try:
-        _voices, probe_tts, _synth = _tts()
-        result.setdefault("checks", {})["tts"] = probe_tts(project)
-    except HTTPException as exc:
-        result.setdefault("checks", {})["tts"] = {"ok": False, "detail": str(exc.detail)}
-    return result
+        cfg = merge_settings(body.to_settings())
+        result = probe(cfg)
+        if result["ok"]:
+            saved = save_settings(cfg, line=current_line(), remember_api_key=body.remember_api_key)
+            result["settings"] = saved.public()
+        result.setdefault("checks", {})["tts"] = {
+            "ok": None, "detail": "配音未执行生成测试；Gemini 配音、Cloud 朗读和旧版克隆分别受模型与 API 权限限制。"}
+        return result
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc)) from None
 
 
 @app.get("/api/style")
@@ -2995,13 +3026,13 @@ async def upload_ref(
 @app.get("/api/tts/voices")
 def tts_voices() -> dict:
     available_voices, _probe, _synth = _tts()
-    project = vertex_status().get("project") or ""
+    settings = merge_settings(None)
     from tts_client import GEMINI_MODELS, available_languages
 
     return {
-        "voices": available_voices(project),
+        "voices": available_voices(),
         "models": GEMINI_MODELS,
-        "languages": available_languages(project),
+        "languages": available_languages(),
     }
 
 
@@ -3119,7 +3150,7 @@ async def clone_voice(
         (consent.filename if consent is not None else reference.filename) or "",
         (consent.content_type if consent is not None else reference.content_type) or "",
     )
-    project = vertex_status().get("project") or ""
+    settings = merge_settings(None)
     try:
         key = generate_clone_key(
             ref_bytes,
@@ -3127,7 +3158,7 @@ async def clone_voice(
             language_code=language_code or "cmn-CN",
             reference_encoding=ref_enc,
             consent_encoding=consent_enc,
-            project=project,
+            settings=settings,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -3184,8 +3215,7 @@ def tts_speak(body: TtsSpeakBody) -> dict:
     if not text:
         raise HTTPException(400, "这句台词是空的。")
     tts_voice = body.tts_voice or voice.get("tts_voice") or "Charon"
-    settings = vertex_status()
-    project = settings.get("project") or ""
+    settings = merge_settings(None)
     _voices, _probe, synthesize = _tts()
     try:
         audio = synthesize(
@@ -3193,7 +3223,7 @@ def tts_speak(body: TtsSpeakBody) -> dict:
             voice_name=tts_voice,
             speaking_rate=body.speaking_rate if body.speaking_rate else voice.get("speaking_rate") or 1.0,
             pitch=body.pitch if body.pitch is not None else (voice.get("pitch") or 0.0),
-            project=project,
+            settings=settings,
             engine=voice.get("tts_engine") or "",
             model_name=voice.get("tts_model") or "",
             emotion=item.get("emotion") or "",
@@ -3211,9 +3241,9 @@ def tts_speak(body: TtsSpeakBody) -> dict:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
-    dest = draft_voice_mp3(hero_id, body.line_id)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(audio)
+    dest = _voice_output_path(draft_voice_mp3(hero_id, body.line_id), audio)
+    write_bytes(dest, audio)
+    dest.with_suffix(".mp3" if dest.suffix == ".wav" else ".wav").unlink(missing_ok=True)
     return {
         "bible": bible,
         "line_id": body.line_id,
@@ -3235,8 +3265,7 @@ def commit_voice(body: VoiceCommitBody) -> dict:
             nonempty.append((slot["id"], item))
     if not nonempty:
         raise HTTPException(400, "没有可入库的台词。")
-    settings = vertex_status()
-    project = settings.get("project") or ""
+    settings = merge_settings(None)
     tts_voice = voice.get("tts_voice") or "Charon"
     _voices, _probe, synthesize = _tts()
     clips: dict[str, str] = {}
@@ -3248,7 +3277,7 @@ def commit_voice(body: VoiceCommitBody) -> dict:
                 voice_name=tts_voice,
                 speaking_rate=float(voice.get("speaking_rate") or 1.0),
                 pitch=float(voice.get("pitch") or 0.0),
-                project=project,
+                settings=settings,
                 engine=voice.get("tts_engine") or "",
                 model_name=voice.get("tts_model") or "",
                 emotion=item.get("emotion") or "",
@@ -3264,13 +3293,13 @@ def commit_voice(body: VoiceCommitBody) -> dict:
             )
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(502, f"{line_id} 合成失败：{exc}") from exc
-        dest_draft.parent.mkdir(parents=True, exist_ok=True)
-        dest_draft.write_bytes(audio)
-        dest = game_voice_mp3(hero_id, line_id)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(dest_draft, dest)
+        dest_draft = _voice_output_path(dest_draft, audio)
+        write_bytes(dest_draft, audio)
+        dest = _voice_output_path(game_voice_mp3(hero_id, line_id), audio)
+        write_bytes(dest, audio)
         dest_draft.unlink(missing_ok=True)
-        clips[line_id] = f"voice/{line_id}.mp3"
+        dest_draft.with_suffix(".mp3" if dest_draft.suffix == ".wav" else ".wav").unlink(missing_ok=True)
+        clips[line_id] = f"voice/{dest.name}"
     fighter = upsert_fighter_voice(hero_id, bible, clips)
     return {
         "bible": bible,

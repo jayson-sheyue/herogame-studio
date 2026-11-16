@@ -88,6 +88,8 @@ class WorkspaceRoute(APIRoute):
                     resource = ("hero_id", item_id)
             if mutation and path.startswith("/api/style/"):
                 resource = ("style", "anchor")
+            if mutation and path in {"/api/settings", "/api/test-auth"}:
+                resource = ("settings", "api")
             with workspace_guard.lease(
                 token=request.headers.get(WORKSPACE_HEADER),
                 switch=path in SWITCH_PATHS,

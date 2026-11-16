@@ -1,11 +1,11 @@
 # 作图工坊
 
-本地网页工具：用自己的 Google Cloud / Vertex AI 制作像素格斗套图和桌宠立绘（提示词 → 出图 → 切分 → 入库或导出）。**不含对战游戏。**
+本地网页工具：用自己的 Vertex AI Express / Google AI Studio API Key 制作像素格斗套图和桌宠立绘（提示词 → 出图 → 切分 → 入库或导出）。**不含对战游戏。**
 
 公开仓库：<https://github.com/jayson-sheyue/herogame-studio>  
 对战端另仓：<https://github.com/jayson-sheyue/herogame>
 
-本仓库**没有** GCP 项目 ID、密钥、服务账号或本机路径。鉴权只存在你电脑上的 `studio/settings.json`（已被 gitignore）。可参考 `studio/settings.example.json` 自行填写。Application Default Credentials 在本机 `~/.config/gcloud/`，**不要**把该目录或任何服务账号 JSON 拷进仓库。
+鉴权完全使用 **API Key**，不需要 Google Cloud CLI、GCP 项目 ID 或 ADC 登录。密钥默认只保存在本机服务内存中；主动勾选「记住密钥」后才使用系统凭据库。普通设置文件、工程、浏览器存储和导出包不包含 API Key。
 
 ---
 
@@ -16,32 +16,22 @@
 | 操作系统 | macOS、Windows 或 Linux |
 | Python | **3.11 或更高**（`python3 --version`） |
 | pip | 随 Python 安装 |
-| [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) | `gcloud` |
-| GCP 项目 | **你自己的**项目，必须开通结算 |
+| API Key | 自己的 Express 或 AI Studio Key，及所选模型需要的权限 / 配额 |
 | 浏览器 | Chrome / Edge / Firefox |
 | 网络 | 出图时访问 Vertex AI |
 
-Python 包见 `studio/requirements.txt`：FastAPI、Uvicorn、Pillow、`google-genai`、Cloud TTS 等。**不要**把别人的 `settings.json` 或 ADC 密钥拷过来。
+Python 包见 `studio/requirements.txt`：FastAPI、Uvicorn、Pillow、`google-genai`、Cloud TTS 等。API Key 由你自己提供，按所选服务的实际用量计费。
 
 ---
 
-## 1. 安装 Google Cloud CLI 并登录
+## 1. 获取自己的 API Key
 
-1. 安装 CLI：<https://cloud.google.com/sdk/docs/install>
-2. [Google Cloud Console](https://console.cloud.google.com/) 新建项目，绑定结算账号。
-3. 启用 API：
-   - **Vertex AI API**（`aiplatform.googleapis.com`）— 必须
-   - **Cloud Text-to-Speech API**（`texttospeech.googleapis.com`）— 台词配音，可后开
-4. 本机执行（会打开浏览器登录**你的** Google 账号）：
+- **Vertex AI Express**：在 [Vertex AI Studio API Keys](https://console.cloud.google.com/vertex-ai/studio/settings/api-keys) 获取 Key。工坊支持 `AQ.` 开头的 Key，通过 Express 全局接口调用，不传项目 ID / 区域。
+- **Google AI Studio**：在 [AI Studio API Keys](https://aistudio.google.com/apikey) 获取 Key。工坊支持 `AI…` 开头的 Key，也允许手动选择 AI Studio 使用新格式的授权 Key。
 
-```bash
-gcloud init
-gcloud config set project YOUR_GCP_PROJECT_ID
-gcloud auth application-default login
-gcloud services enable aiplatform.googleapis.com
-```
+前缀仅用于「自动识别」的建议（`AQ.` → Express，其余 → AI Studio），不能证明 Key 的来源或权限。识别不符时在工坊中手动选择服务，不会自动把请求转发给另一服务。两条产品线分别记住服务和模型，密钥也分别保留。
 
-`YOUR_GCP_PROJECT_ID` 换成你自己的项目 ID。出图按次计费。
+模型是否可调用取决于 Key 的 API 限制、地区、结算和配额。连接检查不会生成内容；实际生图、配音和 BGM 生成可能收费。
 
 ---
 
@@ -64,17 +54,29 @@ macOS 完成首次安装后，也可直接双击仓库根目录的 `start.comman
 
 **不要双击 `studio/static/index.html` 来使用工坊**：`file://` 页面无法连接后端，直接打开时只显示启动指引。工坊只监听本机；使用期间保持终端开启，按 `Ctrl+C` 停止本次启动的服务。需要开发热重载时仍可运行 `python3 server.py`。
 
-工坊左侧 **Vertex 设定** 填写你的 GCP 项目 ID，点 **测试鉴权**。通过后写入本机 `settings.json`（不会进 Git）。也可先复制 `settings.example.json` 为 `settings.json` 再改项目 ID。
+工坊左侧 **API Key 设置**：
 
-可选环境变量（仅作首次默认，一般不用）：
+1. 选择服务来源（可自动识别），粘贴 API Key，并填写该服务支持的模型 ID。
+2. 点击 **保存设置**，或 **测试连接并保存**。连接检查对提示词和图像模型调用 `countTokens`，不执行生成；全部通过后才保存新设置。失败保留原设置和输入，逐项显示原因。
+3. 密钥默认仅保留在本次服务会话中，重启后重新输入。需要记住时主动勾选 **记住密钥（系统凭据库）**；macOS 使用钥匙串，Windows / Linux 需要可用的系统凭据后端。不可用时会报错，**不会退回明文文件**。
+4. 密钥输入留空会保留已设置的 Key，输入新值可替换；点 **清除密钥** 会移除当前产品线的会话和已记住的 Key。环境变量中的 Key 在本次会话中也不会自动补回，重启后仍按环境变量加载。
 
-| 变量 | 含义 |
+设置下一个任务生效；已开始的任务使用其配置快照。API 只返回是否已设置与存储位置，不回传密钥或掩码。`studio/settings.<产品线>.json` 仅保存服务、模型及存储方式；旧的 project / location 字段不再用于鉴权，旧 ADC 文件不会被读取或修改。
+
+普通设置优先级：请求中的模型 / 服务 > 当前产品线设置文件 > 环境变量 > 默认值。密钥优先级：会话中显式设置 / 清除 > 本安装位置及产品线的系统凭据 > 环境变量。
+
+| 可选环境变量 | 含义 |
 |---|---|
-| `GOOGLE_CLOUD_PROJECT` | GCP 项目 |
-| `GOOGLE_CLOUD_LOCATION` | 提示词区域，默认 `global` |
-| `STUDIO_IMAGE_LOCATION` | 出图区域 |
-| `STUDIO_TEXT_MODEL` | 默认 `gemini-2.5-flash` |
-| `STUDIO_IMAGE_MODEL` | 默认 `gemini-2.5-flash-image` |
+| `STUDIO_API_KEY` | 本机服务 Key；其次兼容 `GOOGLE_API_KEY`、`GEMINI_API_KEY` |
+| `STUDIO_API_PROVIDER` | `auto`、`vertex` 或 `ai_studio` |
+| `STUDIO_TEXT_MODEL` | 未保存配置时的提示词模型，默认 `gemini-3.8-flash` |
+| `STUDIO_IMAGE_MODEL` | 未保存配置时的图像模型，默认 `gemini-2.5-flash-image` |
+
+已有模型选择保持原样，不会静默改用其他模型。旧 `gemini-2.5-flash` 的可用性已受服务方生命周期限制；若当前 Key 不能使用，请手动填写该服务当前可用的文本模型。`settings.example.json` 仅演示非秘密配置，不要在 JSON 中加入 API Key。
+
+**配音与 BGM 边界**：Gemini-TTS 使用同一 Key 的生成接口，2.5 TTS 的模型 ID 会按所选服务对应到其正式 / preview 名称。PCM 结果保存为真实 WAV，旧 MP3 仍可预览；入库与导出记录实际扩展名。声线目录是选择参考，连接检查不验证音频生成。原 Cloud 朗读 / 旧版克隆改为 API Key 请求，仍需独立 Cloud Text-to-Speech 权限；Express 不提供这些独立接口，AI Studio 限制到 Gemini API 的 Key 也通常无此权限。不会回退 ADC、自动换引擎或替换 Key。Cloud 目录仅附带常见中文声线示例；其他语种可使用 Gemini 预置声线。Lyria 使用 AI Studio Interactions 接口及其模型权限；Express 模式不支持该接口，可上传已有 BGM。
+
+官方接入参考（本次按 `google-genai` 2.23.0、`keyring` 25.7.0 验证）：[Express Key 与全局端点](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start/express-mode/overview)、[Express 可用 REST 接口](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/express-mode/api-reference)、[Gemini API Key](https://ai.google.dev/gemini-api/docs/api-key)、[Gemini generateContent 配音](https://ai.google.dev/gemini-api/docs/generate-content/speech-generation)、[模型生命周期](https://ai.google.dev/gemini-api/docs/deprecations)、[keyring 系统凭据库](https://keyring.readthedocs.io/en/stable/)。
 
 ---
 
