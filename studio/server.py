@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -11,11 +12,14 @@ import time
 from io import BytesIO
 from pathlib import Path
 
+from storage import write_json
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel, Field
+from workspace_guard import WorkspaceRoute
 
 from combat import normalize_moves, sync_moves_into_fighter
 from prompts import (
@@ -177,6 +181,7 @@ RESERVED_FOLDERS = {"_style", "stages", "drafts"}
 boot()
 
 app = FastAPI(title="HeroGame Art Studio")
+app.router.route_class = WorkspaceRoute
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -351,6 +356,7 @@ class PortraitCreateBody(BaseModel):
 
 class PortraitSaveBody(BaseModel):
     portrait_id: str
+    expected_revision: str | None = None
     appearance: str = ""
     gear: str = ""
     display_name: str = ""
@@ -618,8 +624,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json(path, data)
 
 
 _BIBLE_LOCKS: dict[str, threading.Lock] = {}
@@ -3295,12 +3300,17 @@ def _portrait_slots_from_specs(specs: list | None, *, fallback_all: bool = False
 
 def _portrait_payload(portrait_id: str, bible: dict | None = None) -> dict:
     data = dict(bible or read_portrait_bible(portrait_id) or {})
+    data["revision"] = _portrait_revision(data)
     data["portrait_id"] = portrait_id
     slots = resolve_portrait_slots(data, fallback_all=True)
     data["slots"] = slots
     data["slot_presets"] = PORTRAIT_SLOTS
     data["assets"] = {s["id"]: portrait_asset_view(portrait_id, s["id"], data) for s in slots}
     return data
+
+
+def _portrait_revision(bible: dict) -> str:
+    return hashlib.sha256(json.dumps(bible, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 @app.get("/api/portraits")
@@ -3384,6 +3394,8 @@ def save_portrait(body: PortraitSaveBody) -> dict:
     bible = read_portrait_bible(pid)
     if not bible:
         raise HTTPException(404, "没有这个立绘角色。")
+    if body.expected_revision is not None and body.expected_revision != _portrait_revision(bible):
+        raise HTTPException(409, "这份立绘已在其他操作或窗口中更新。请先复制保留当前编辑，再重新打开立绘后合并修改。")
     if body.appearance.strip():
         bible["appearance"] = body.appearance.strip()
     if body.gear.strip() or "gear" in bible:
@@ -3781,6 +3793,8 @@ def export_portrait(body: PortraitExportBody) -> dict:
     _require_deskpet()
     pid = _safe_id(body.portrait_id)
     bible = read_portrait_bible(pid) or {}
+    if not bible:
+        raise HTTPException(404, "没有这个立绘角色。")
     plan_slots = resolve_portrait_slots(bible, fallback_all=True)
     slot_ids = [body.slot_id] if body.slot_id else [s["id"] for s in plan_slots]
     results = []
@@ -3788,6 +3802,7 @@ def export_portrait(body: PortraitExportBody) -> dict:
     allowed = {s["id"] for s in plan_slots} | set(PORTRAIT_SLOT_IDS)
     for sid in slot_ids:
         if sid not in allowed:
+            errors.append({"slot_id": sid, "error": f"未知立绘槽位 {sid}"})
             continue
         try:
             results.append(export_portrait_slot(pid, sid, strict=bool(body.strict), bible=bible))

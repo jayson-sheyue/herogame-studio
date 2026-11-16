@@ -8,6 +8,7 @@ const state = {
   hasProject: false,
   needsGate: true,
   workspace: null,
+  workspaceToken: "",
   projects: [],
   heroes: [],
   heroSlots: [],
@@ -48,6 +49,7 @@ const state = {
 };
 
 const playback = { kind: "hero", slotId: null, timer: 0, index: 0, fps: 8, urls: [], stage: null };
+const portraitDirty = { prompts: new Set(), blueprints: new Set(), fields: new Set() };
 
 function heroBriefFromForm() {
   return {
@@ -189,6 +191,25 @@ async function pollUntil(fn, ok, { tries = 30, intervalMs = 4000 } = {}) {
   return null;
 }
 
+const WORKSPACE_SWITCH_PATHS = new Set(["/api/line", "/api/line/clear", "/api/projects/use", "/api/projects/wipe"]);
+
+async function workspaceFetch(path, opts = {}) {
+  const token = state.workspaceToken;
+  const headers = new Headers(opts.headers || {});
+  if (token) headers.set("X-Studio-Workspace", token);
+  const res = await fetch(path, { ...opts, headers });
+  if (token !== state.workspaceToken) {
+    const error = new Error("工程已切换，已忽略旧请求的返回结果。请在当前工程重新操作。");
+    error.code = "stale_workspace";
+    throw error;
+  }
+  const nextToken = res.headers.get("X-Studio-Workspace");
+  if (nextToken && (path === "/api/health" || WORKSPACE_SWITCH_PATHS.has(path))) {
+    state.workspaceToken = nextToken;
+  }
+  return res;
+}
+
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
   if (!(opts.body instanceof FormData) && !headers["Content-Type"]) {
@@ -207,7 +228,7 @@ async function api(path, opts = {}) {
   }
   let res;
   try {
-    res = await fetch(path, {
+    res = await workspaceFetch(path, {
       ...opts,
       headers,
       signal: ctrl.signal,
@@ -267,7 +288,7 @@ function setStatus(text, kind = "", opts = {}) {
 const INBOX_MAX = 15;
 const inboxTasks = [];
 let inboxSeq = 0;
-const INBOX_ST = { wait: "等待", ok: "完成", bad: "失败" };
+const INBOX_ST = { wait: "等待", ok: "完成", partial: "部分完成", bad: "失败" };
 
 function esc(s) {
   return String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -307,7 +328,11 @@ function renderInbox() {
 function pushTask(title) {
   const task = { id: ++inboxSeq, title, status: "wait", detail: "", t: Date.now() };
   inboxTasks.push(task);
-  while (inboxTasks.length > INBOX_MAX) inboxTasks.shift();
+  while (inboxTasks.length > INBOX_MAX) {
+    const finished = inboxTasks.findIndex((item) => item.status !== "wait");
+    if (finished < 0) break;
+    inboxTasks.splice(finished, 1);
+  }
   renderInbox();
   setInboxOpen(true);
   return task.id;
@@ -481,7 +506,7 @@ async function uploadHeroRef(file) {
   body.append("appearance", $("appearance")?.value.trim() || "");
   setStatus("正在上传真人参考图…");
   try {
-    const res = await fetch("/api/heroes/ref-photo", { method: "POST", body });
+    const res = await workspaceFetch("/api/heroes/ref-photo", { method: "POST", body });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || res.statusText);
     if (data.bible) {
@@ -798,6 +823,7 @@ function renderProjectGateList() {
 }
 
 async function pickProductLine(kind) {
+  if (!(await prepareWorkspaceSwitch())) return;
   const data = await api("/api/line", {
     method: "POST",
     body: JSON.stringify({ kind }),
@@ -843,10 +869,12 @@ async function afterProjectReady(data) {
 }
 
 async function returnToLineGate() {
+  if (!(await prepareWorkspaceSwitch())) return;
   try {
     await api("/api/line/clear", { method: "POST", body: "{}" });
-  } catch {
-    /* ignore */
+  } catch (err) {
+    setStatus(err.message || String(err), "bad");
+    return;
   }
   sessionStorage.removeItem(LINE_SESSION_KEY);
   state.line = "";
@@ -892,6 +920,11 @@ function closeProjectSwitcher() {
 }
 
 function resetBoardState() {
+  clearTimeout(saveTimer);
+  resetPortraitEditor();
+  heroOpenSeq += 1;
+  heroOpenAbort?.abort();
+  stopPlayback();
   state.bible = null;
   state.assets = {};
   state.stageBible = null;
@@ -903,6 +936,20 @@ function resetBoardState() {
     if ($(id)) $(id).value = "";
   });
   if ($("stageTerrain")) $("stageTerrain").value = "auto";
+}
+
+async function prepareWorkspaceSwitch() {
+  if (inboxTasks.some((task) => task.status === "wait") || JOBS.keys.size || JOBS.batches.size) {
+    setStatus("仍有任务执行中。可继续浏览当前工程，任务完成后再切换工程或产品线。", "bad");
+    return false;
+  }
+  clearTimeout(saveTimer);
+  if (state.line === "deskpet" && !(await flushPortraitSave())) return false;
+  if (state.line === "herogame" && currentHeroId() && !(await saveHeroProgress({ quiet: true }))) {
+    setStatus("当前英雄保存失败，工程未切换。请保留编辑后重试。", "bad");
+    return false;
+  }
+  return true;
 }
 
 async function applyProjectSwitch(data) {
@@ -981,6 +1028,7 @@ async function useProjectFolder(folder, { fromGate = false } = {}) {
       fromGate && $("projectGateAlias")
         ? $("projectGateAlias").value.trim()
         : aliasForCreate();
+    if (!(await prepareWorkspaceSwitch())) return;
     await runJob({
       buttons: ["projectSwitchBtn", "projectUseBtn", "projectGateBrowseBtn"],
       label: "正在切换…",
@@ -2392,8 +2440,8 @@ function applyHeroPayload(data, { replaceAssets = false, applyAssets = true } = 
     if (replaceAssets) state.assets = data.assets;
     else mergeHeroAssets(data.assets);
   }
-  if (data.slots) state.heroSlots = data.slots;
-  if (data.voice_assets) state.voiceAssets = data.voice_assets;
+  if (applyAssets && data.slots) state.heroSlots = data.slots;
+  if (applyAssets && data.voice_assets) state.voiceAssets = data.voice_assets;
 }
 
 function patchHeroCard(slotId) {
@@ -2837,13 +2885,20 @@ function addCustomPortraitSlot() {
   setStatus(`已添加套图「${title}」· ${frames} 帧。`, "ok");
 }
 
-function applyPortraitPayload(data, { soft = false } = {}) {
+function applyPortraitPayload(data, { soft = false, activate = false } = {}) {
   if (!data) return;
-  // soft：自动保存回写时保留当前 textarea 焦点与未提交的本地 prompts（以内存为准）
-  const localPrompts = soft && state.portrait?.prompts ? { ...state.portrait.prompts } : null;
-  state.portrait = data;
-  if (localPrompts) {
-    state.portrait.prompts = { ...(data.prompts || {}), ...localPrompts };
+  if (!activate && data.portrait_id !== currentPortraitId()) return;
+  const local = activate ? null : state.portrait;
+  state.portrait = { ...data, prompts: { ...data.prompts }, motion_blueprints: { ...data.motion_blueprints } };
+  if (local) {
+    for (const sid of portraitDirty.prompts) state.portrait.prompts[sid] = local.prompts?.[sid] || "";
+    for (const sid of portraitDirty.blueprints) {
+      state.portrait.motion_blueprints[sid] = { ...local.motion_blueprints?.[sid] };
+    }
+    if (soft) {
+      state.portrait.appearance = local.appearance;
+      state.portrait.gear = local.gear;
+    }
   }
   state.portraitSlots = data.slots || state.portraitSlots || [];
   if (data.slot_presets?.length) state.portraitSlotPresets = data.slot_presets;
@@ -2865,38 +2920,90 @@ function applyPortraitPayload(data, { soft = false } = {}) {
   refreshActionLocks();
 }
 
+let portraitSaveInFlight = null;
+
 async function savePortraitProgress({ quiet = false } = {}) {
   const pid = currentPortraitId();
-  if (!pid) return false;
-  // pull latest from textareas
-  const prompts = { ...(state.portrait?.prompts || {}) };
-  $("grid")?.querySelectorAll("textarea[data-portrait-prompt]").forEach((el) => {
-    const sid = el.getAttribute("data-portrait-prompt");
-    if (sid) prompts[sid] = el.value;
-  });
-  state.portrait = state.portrait || { portrait_id: pid };
-  state.portrait.prompts = prompts;
+  if (!pid) return true;
+  // A second save must snapshot edits after the first acknowledgement.
+  while (portraitSaveInFlight) {
+    if (!(await portraitSaveInFlight)) return false;
+    if (pid !== currentPortraitId()) return false;
+  }
+  const editor = state.portrait;
+  const workspaceToken = state.workspaceToken;
+  const prompts = {};
+  for (const sid of portraitDirty.prompts) {
+    prompts[sid] = state.portrait?.prompts?.[sid] || "";
+  }
+  const motionBlueprints = {};
+  for (const sid of portraitDirty.blueprints) {
+    motionBlueprints[sid] = { ...(state.portrait?.motion_blueprints?.[sid] || {}) };
+  }
+  const body = {
+    portrait_id: pid,
+    expected_revision: editor.revision,
+    appearance: $("portraitAppearance")?.value ?? editor.appearance ?? "",
+    gear: $("portraitGear")?.value ?? editor.gear ?? "",
+    display_name: editor.display_name || "",
+    prompts,
+    motion_blueprints: motionBlueprints,
+  };
+  const save = (async () => {
+    try {
+      const data = await api("/api/portraits/save", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if (pid !== currentPortraitId() || workspaceToken !== state.workspaceToken) return false;
+      for (const [sid, value] of Object.entries(prompts)) {
+        if (state.portrait.prompts?.[sid] === value) portraitDirty.prompts.delete(sid);
+      }
+      for (const [sid, value] of Object.entries(motionBlueprints)) {
+        if (JSON.stringify(state.portrait.motion_blueprints?.[sid]) === JSON.stringify(value)) {
+          portraitDirty.blueprints.delete(sid);
+        }
+      }
+      for (const field of ["appearance", "gear"]) {
+        if (state.portrait[field] === body[field]) portraitDirty.fields.delete(field);
+      }
+      applyPortraitPayload(data, { soft: true });
+      if (!quiet) setStatus("立绘提示词已保存。", "ok");
+      return true;
+    } catch (err) {
+      if (pid === currentPortraitId() && workspaceToken === state.workspaceToken) {
+        const detail = String(err.message || err).replace(/[。\s]+$/, "");
+        setStatus(`自动保存未完成：${detail}。当前编辑已保留。`, "bad");
+      }
+      return false;
+    }
+  })();
+  portraitSaveInFlight = save;
   try {
-    const data = await api("/api/portraits/save", {
-      method: "POST",
-      body: JSON.stringify({
-        portrait_id: pid,
-        appearance: $("portraitAppearance")?.value || state.portrait.appearance || "",
-        gear: $("portraitGear")?.value || state.portrait.gear || "",
-        display_name: state.portrait.display_name || "",
-        prompts,
-      }),
-    });
-    applyPortraitPayload(data, { soft: quiet });
-    if (!quiet) setStatus("立绘提示词已保存。", "ok");
-    return true;
-  } catch (err) {
-    if (!quiet) setStatus(err.message || String(err), "bad");
-    return false;
+    return await save;
+  } finally {
+    if (portraitSaveInFlight === save) portraitSaveInFlight = null;
   }
 }
 
 let portraitSaveTimer = 0;
+let portraitOpenSeq = 0;
+
+function resetPortraitEditor() {
+  clearTimeout(portraitSaveTimer);
+  portraitSaveTimer = 0;
+  portraitOpenSeq += 1;
+  portraitDirty.prompts.clear();
+  portraitDirty.blueprints.clear();
+  portraitDirty.fields.clear();
+  state.portrait = null;
+  state.portraitAssets = {};
+  state.portraitSlots = [];
+  state.portraitPlan = [];
+  for (const id of ["portraitAppearance", "portraitGear"]) {
+    if ($(id)) $(id).value = "";
+  }
+}
 function schedulePortraitSave() {
   if (!currentPortraitId()) return;
   clearTimeout(portraitSaveTimer);
@@ -3066,11 +3173,25 @@ async function refreshPortraitList() {
 
 async function openPortrait(portraitId) {
   if (!portraitId) return;
-  const data = await api(`/api/portraits/${portraitId}`);
-  applyPortraitPayload(data);
-  persistSession({ mode: "portraits", portrait_id: portraitId });
-  setMode("portraits");
-  setStatus(`已打开立绘「${data.display_name || portraitId}」`, "ok");
+  if (!canLeavePortrait()) return;
+  const seq = ++portraitOpenSeq;
+  const saved = await flushPortraitSave();
+  if (seq !== portraitOpenSeq) return;
+  if (!saved && (portraitId !== currentPortraitId() || !window.confirm(
+    "当前编辑未保存。请先复制保留需要的文字。重新读取这份立绘会放弃本页未保存的编辑，是否继续？"
+  ))) return;
+  try {
+    const data = await api(`/api/portraits/${portraitId}`);
+    if (seq !== portraitOpenSeq) return;
+    stopPlayback();
+    resetPortraitEditor();
+    applyPortraitPayload(data, { activate: true });
+    persistSession({ mode: "portraits", portrait_id: portraitId });
+    setMode("portraits");
+    setStatus(`已打开立绘「${data.display_name || portraitId}」`, "ok");
+  } catch (err) {
+    if (seq === portraitOpenSeq) setStatus(err.message || String(err), "bad");
+  }
 }
 
 async function newPortrait() {
@@ -3078,9 +3199,9 @@ async function newPortrait() {
     setStatus("请先锁定风格锚点。", "bad");
     return;
   }
-  state.portrait = null;
-  state.portraitAssets = {};
-  state.portraitSlots = [];
+  if (!canLeavePortrait() || !(await flushPortraitSave())) return;
+  stopPlayback();
+  resetPortraitEditor();
   state.portraitPlan = defaultPortraitPlan();
   renderPortraitSlotPicker();
   if ($("portraitAppearance")) $("portraitAppearance").value = "";
@@ -3092,12 +3213,23 @@ async function newPortrait() {
   refreshActionLocks();
 }
 
+function canLeavePortrait() {
+  const pid = currentPortraitId();
+  const prefixes = ["portrait-gen", "portrait-reprompt", "portrait-export", "portrait-split"];
+  if ([...JOBS.keys].some((key) => prefixes.some((prefix) => key.startsWith(`${prefix}:${pid}:`)) || key === `portrait-batch:${pid}` || key.endsWith(`:portrait:${pid}`) || key.startsWith("infer-portrait:"))) {
+    setStatus("当前立绘仍有任务执行中。可浏览其他页面，任务结束后再新建或切换立绘。", "bad");
+    return false;
+  }
+  return true;
+}
+
 async function deletePortrait(portraitId) {
   const id = portraitId || currentPortraitId();
   if (!id) {
     setStatus("没有可删的立绘。先打开一份，或点列表旁的删。", "bad");
     return;
   }
+  if (id === currentPortraitId() && (!canLeavePortrait() || !(await flushPortraitSave()))) return;
   const found = (state.portraits || []).find((p) => p.portrait_id === id);
   const name =
     state.portrait?.portrait_id === id
@@ -3118,9 +3250,7 @@ async function deletePortrait(portraitId) {
     });
     state.portraits = data.portraits || [];
     if (state.portrait?.portrait_id === id) {
-      state.portrait = null;
-      state.portraitAssets = {};
-      state.portraitSlots = [];
+      resetPortraitEditor();
       state.portraitPlan = defaultPortraitPlan();
       renderPortraitSlotPicker();
       if ($("portraitAppearance")) $("portraitAppearance").value = "";
@@ -3145,6 +3275,7 @@ async function inferPortrait() {
     setStatus("请先锁定风格锚点。", "bad");
     return;
   }
+  if (!(await flushPortraitSave())) return;
   const appearance = $("portraitAppearance")?.value.trim() || "";
   const gear = $("portraitGear")?.value.trim() || "";
   if (appearance.length < 2 && !currentPortraitId()) {
@@ -3181,7 +3312,7 @@ async function inferPortrait() {
       }),
     });
     updateTask(taskId, "ok", "");
-    applyPortraitPayload(data);
+    applyPortraitPayload(data, { activate: !currentPortraitId() });
     await refreshPortraitList();
     persistSession({ mode: "portraits", portrait_id: data.portrait_id });
     setStatus(
@@ -3203,6 +3334,7 @@ async function inferPortraitSlotPrompt(slotId) {
     setStatus("先写出提示词或打开立绘。", "bad");
     return false;
   }
+  if (!(await flushPortraitSave())) return false;
   const slot =
     (state.portraitSlots || []).find((s) => s.id === slotId) ||
     (state.portraitPlan || []).find((p) => p.id === slotId) ||
@@ -3236,6 +3368,7 @@ async function inferPortraitSlotPrompt(slotId) {
     });
     updateTask(taskId, "ok", "");
     applyPortraitPayload(data);
+    if (currentPortraitId() !== pid) return true;
     if (data.prompt) {
       state.portrait.prompts = state.portrait.prompts || {};
       state.portrait.prompts[slotId] = data.prompt;
@@ -3265,7 +3398,7 @@ async function generatePortraitSlot(slotId) {
     setStatus("先写出提示词或打开立绘。", "bad");
     return false;
   }
-  await flushPortraitSave();
+  if (!(await flushPortraitSave())) return false;
   const ta = $("grid")?.querySelector(`textarea[data-portrait-prompt="${slotId}"]`);
   const prompt = (ta?.value || state.portrait?.prompts?.[slotId] || "").trim();
   if (!prompt) {
@@ -3324,7 +3457,7 @@ async function generateAllPortraits() {
     setStatus("请先单独生成并确认「人物三视图」，再一键生成其余动作。", "bad");
     return;
   }
-  await flushPortraitSave();
+  if (!(await flushPortraitSave())) return false;
   const pending = pendingPortraitMotionSlots();
   if (!pending.length) {
     setStatus("其余动作都已有草稿。不满意请在卡片上单独「再出一版」或先丢弃草稿。", "ok");
@@ -3364,14 +3497,17 @@ async function generateAllPortraits() {
 async function splitPortraitSlot(slotId) {
   const pid = currentPortraitId();
   if (!pid) return;
-  await flushPortraitSave();
+  if (!(await flushPortraitSave())) return false;
   const wasPlaying = playback.kind === "portrait" && playback.slotId === slotId && playback.timer;
+  const key = `portrait-split:${pid}:${slotId}`;
+  if (JOBS.keys.has(key)) return;
+  JOBS.keys.add(key);
   try {
     const data = await api("/api/portraits/split", {
       method: "POST",
       body: JSON.stringify({ portrait_id: pid, slot_id: slotId }),
     });
-    if (data.asset) {
+    if (data.asset && currentPortraitId() === pid) {
       state.portraitAssets[slotId] = data.asset;
       renderPortraitBoard();
       if (wasPlaying) await startPlayback(slotId, { kind: "portrait" });
@@ -3379,13 +3515,15 @@ async function splitPortraitSlot(slotId) {
     setStatus(`「${slotId}」已切成 ${data.frames?.length || 0} 帧。可点「播放」预览动图。`, "ok");
   } catch (err) {
     setStatus(err.message || String(err), "bad");
+  } finally {
+    JOBS.keys.delete(key);
   }
 }
 
 async function exportPortraitSlot(slotId) {
   const pid = currentPortraitId();
   if (!pid) return;
-  await flushPortraitSave();
+  if (!(await flushPortraitSave())) return false;
   const key = `portrait-export:${pid}:${slotId || "all"}`;
   if (JOBS.keys.has(key)) {
     setStatus("正在去青导出…", "wait");
@@ -3400,14 +3538,17 @@ async function exportPortraitSlot(slotId) {
       method: "POST",
       body: JSON.stringify({ portrait_id: pid, slot_id: slotId || "" }),
     });
-    updateTask(taskId, "ok", "");
     if (data.payload) applyPortraitPayload(data.payload);
     const n = (data.exports || []).reduce((a, e) => a + (e.count || 0), 0);
     const dir = data.exports?.[0]?.dir || "";
     const errN = (data.errors || []).length;
+    const failures = (data.errors || []).map((item) => `${portraitSlotTitle(item.slot_id)}：${String(item.error).replace(/[。；;\s]+$/, "")}`).join("；");
+    updateTask(taskId, errN ? "partial" : "ok", errN ? `${errN} 项失败。${failures}` : `已导出 ${n} 帧`);
     setStatus(
-      `已去青导出 ${n} 帧${dir ? ` → ${dir}` : ""}。可点「打开导出文件夹」。${errN ? `（${errN} 槽跳过）` : ""}`,
-      "ok"
+      errN
+        ? `导出部分完成：已保留 ${n} 帧，${errN} 项失败。${failures}。可在对应卡片重试导出。`
+        : `已去青导出 ${n} 帧${dir ? ` → ${dir}` : ""}。可点「打开导出文件夹」。`,
+      errN ? "bad" : "ok"
     );
   } catch (err) {
     updateTask(taskId, "bad", err.message || err);
@@ -3597,11 +3738,8 @@ async function loadHeroes() {
 let heroOpenAbort = null;
 let heroOpenSeq = 0;
 
-function applyHeroPayload(data) {
-  state.bible = data.bible;
-  state.assets = data.assets || {};
-  state.heroSlots = data.slots || state.heroSlots;
-  state.voiceAssets = data.voice_assets || {};
+function openHeroPayload(data) {
+  applyHeroPayload(data, { replaceAssets: true });
   applyRefPhoto(data.ref_photo);
   if ($("appearance")) $("appearance").value = data.bible.appearance || data.bible.description || "";
   if ($("gear")) $("gear").value = data.bible.gear || "";
@@ -3656,7 +3794,7 @@ async function openHero(heroId) {
   try {
     const data = await api(`/api/heroes/${heroId}`, { signal: heroOpenAbort.signal });
     if (seq !== heroOpenSeq) return;
-    applyHeroPayload(data);
+    openHeroPayload(data);
     document.querySelectorAll("#heroList [data-open]").forEach((el) => {
       el.classList.toggle("on", el.getAttribute("data-open") === heroId);
     });
@@ -3815,7 +3953,7 @@ async function uploadStyle(file) {
   body.append("file", file);
   setStatus("正在上传风格图…");
   try {
-    const res = await fetch("/api/style/upload", { method: "POST", body });
+    const res = await workspaceFetch("/api/style/upload", { method: "POST", body });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || res.statusText);
     applyStyle(data.style);
@@ -5711,7 +5849,7 @@ async function generateAll() {
 
 async function downloadContentPack(body, statusText) {
   setStatus(statusText || "正在打包…", "");
-  const res = await fetch("/api/pack/export", {
+  const res = await workspaceFetch("/api/pack/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -6730,6 +6868,7 @@ document.addEventListener("input", (ev) => {
     const sid = portraitPrompt.getAttribute("data-portrait-prompt");
     if (!state.portrait.prompts) state.portrait.prompts = {};
     state.portrait.prompts[sid] = portraitPrompt.value;
+    portraitDirty.prompts.add(sid);
     schedulePortraitSave();
     return;
   }
@@ -6753,6 +6892,7 @@ document.addEventListener("input", (ev) => {
     if (state.portrait) {
       if (ev.target.id === "portraitAppearance") state.portrait.appearance = ev.target.value;
       if (ev.target.id === "portraitGear") state.portrait.gear = ev.target.value;
+      portraitDirty.fields.add(ev.target.id === "portraitAppearance" ? "appearance" : "gear");
       schedulePortraitSave();
     }
   }
@@ -7240,7 +7380,13 @@ window.addEventListener("resize", () => {
 window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") setInboxOpen(false);
 });
-window.addEventListener("beforeunload", () => persistSession());
+window.addEventListener("beforeunload", (event) => {
+  persistSession();
+  if (portraitSaveInFlight || portraitDirty.prompts.size || portraitDirty.blueprints.size || portraitDirty.fields.size) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
 
 setInterval(refreshPromptAges, 10000);
 refreshHealth();

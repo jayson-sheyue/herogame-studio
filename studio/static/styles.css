@@ -221,7 +221,7 @@ body.style-frozen [data-rail="style"] input {
 }
 .inbox-list li {
   display: grid;
-  grid-template-columns: 42px 1fr;
+  grid-template-columns: 52px 1fr;
   gap: 2px 8px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
@@ -242,6 +242,7 @@ body.style-frozen [data-rail="style"] input {
 }
 .inbox-list li.wait .st { color: var(--cyan); }
 .inbox-list li.ok .st { color: var(--ok); }
+.inbox-list li.partial .st { color: var(--warn); }
 .inbox-list li.bad .st { color: var(--danger); }
 .inbox-list li.empty {
   display: block;

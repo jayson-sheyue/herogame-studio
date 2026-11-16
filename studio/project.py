@@ -10,6 +10,8 @@ import sys
 import time
 from pathlib import Path
 
+from storage import write_json
+
 MARKER = "herogame.json"
 KIND_HEROGAME = "herogame"
 KIND_DESKPET = "deskpet"
@@ -126,8 +128,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json(path, data)
 
 
 def _resolve_folder(folder: str, *, must_exist: bool = True) -> Path:

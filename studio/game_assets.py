@@ -6,6 +6,8 @@ import json
 import shutil
 import time
 from pathlib import Path
+
+from storage import write_json
 from statistics import median
 
 from PIL import Image, ImageDraw, ImageFont
@@ -57,8 +59,7 @@ def ensure_dirs() -> None:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json(path, data)
 
 
 def _read_json(path: Path) -> dict:

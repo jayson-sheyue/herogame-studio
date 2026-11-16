@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from pathlib import Path
+
+from storage import write_json
 
 from PIL import Image
 
@@ -53,8 +56,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json(path, data)
 
 
 def read_portrait_bible(portrait_id: str) -> dict:
@@ -219,15 +221,29 @@ def export_portrait_slot(
         raise FileNotFoundError(f"槽位「{slot_id}」切分后仍无帧。")
 
     dest_dir = export_portrait_dir(portrait_id, slot_id)
-    if dest_dir.exists():
-        shutil.rmtree(dest_dir)
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{slot_id}-export-", dir=dest_dir.parent))
+    previous = staging.with_name(staging.name + ".previous")
     written: list[str] = []
-    for src in frames:
-        out = dest_dir / src.name
-        keyed = cyan_key_png(src.read_bytes(), frames=1, strict=strict)
-        out.write_bytes(keyed)
-        written.append(str(out))
+    try:
+        for src in frames:
+            keyed = cyan_key_png(src.read_bytes(), frames=1, strict=strict)
+            (staging / src.name).write_bytes(keyed)
+            written.append(str(dest_dir / src.name))
+        # Publish the complete set only; keep the old export on any failure.
+        if dest_dir.exists():
+            dest_dir.replace(previous)
+        try:
+            staging.replace(dest_dir)
+        except OSError:
+            if previous.exists():
+                previous.replace(dest_dir)
+            raise
+        if previous.exists():
+            shutil.rmtree(previous, ignore_errors=True)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
     return {
         "portrait_id": portrait_id,
         "slot_id": slot_id,
