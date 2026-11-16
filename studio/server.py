@@ -57,10 +57,14 @@ from prompts import (
     fx_default_body,
     FX_SUBJECT_MODES,
     STRIP_RETRY,
+    PORTRAIT_STRIP_RETRY,
+    FALL_STRIP_RETRY,
     FX_STRIP_RETRY,
     FX_FIGURE_STRIP_RETRY,
     FX_CLONE_STRIP_RETRY,
     STRIP_SEPARATION,
+    strip_separation_for,
+    FALL_SLOTS,
     FX_STRIP_SEPARATION,
     FX_FIGURE_STRIP_SEPARATION,
     FX_CLONE_STRIP_SEPARATION,
@@ -126,8 +130,11 @@ from game_assets import (
 )
 from packutil import build_pack_zip
 from portrait_assets import (
+    adopt_portrait_candidate,
+    clear_portrait_candidates,
     delete_portrait,
     discard_portrait_slot,
+    draft_portrait_candidates_dir,
     draft_portrait_png,
     ensure_portrait_dirs,
     export_portrait_dir,
@@ -369,6 +376,7 @@ class PortraitSaveBody(BaseModel):
     gear: str = ""
     display_name: str = ""
     prompts: dict[str, str] = {}
+    motion_blueprints: dict[str, dict] = {}
 
 
 class RevealPathBody(BaseModel):
@@ -401,6 +409,16 @@ class PortraitGenerateBody(BaseModel):
     frames: int | None = None
     vertex: VertexSettingsBody = VertexSettingsBody()
     max_tries: int = 0
+
+
+class PortraitCandidateBody(BaseModel):
+    portrait_id: str
+    slot_id: str
+    candidate: int
+
+
+class PortraitLockTurnaroundBody(BaseModel):
+    portrait_id: str
 
 
 class PortraitSplitBody(BaseModel):
@@ -824,9 +842,11 @@ def _slot_default_frames(slot_id: str) -> int:
 
 
 def _split_frames_flexible(slot_id: str) -> bool:
-    """动作条允许按实图选 5 或 6 切开（新生成默认 5；旧图可能仍是 6）。"""
+    """动作条允许按实图选切开。倒地新图默认 4 帧单行；旧图可能是 5。其它动作默认 5，旧图可能是 6。"""
     if slot_id in {"turnaround"} or str(slot_id).startswith("fx_"):
         return False
+    if slot_id in FALL_SLOTS:
+        return True
     return _slot_default_frames(slot_id) >= 5
 
 
@@ -846,7 +866,7 @@ def _resolve_split_frames(slot_id: str, requested: int | None = None, saved: dic
     if choice is None:
         return max(1, default)
     choice = int(choice)
-    # 4 = 2×2 宫格；5/6 = 常规动作条；身长校对可缩短到其它正整数（≤24）
+    # 倒地 4 = 单行横条；其它槽 4 = 2×2 宫格；5/6 = 常规动作条
     if choice in {4, 5, 6}:
         return choice
     if 1 <= choice <= 24:
@@ -2251,6 +2271,17 @@ def generate(body: GenerateBody) -> dict:
                 f"{FX_STRIP_SEPARATION}"
             )
     elif strip:
+        if body.slot_id in FALL_SLOTS:
+            width_note = (
+                "Knockdown is a ONE-ROW strip (exactly 4 figures left-to-right), never a 2×2 comic grid. "
+                "Last pose is COMPACT (knees-up or side-heap) and MUST FIT a standing-width cell. "
+                "FORBIDDEN: a full-length horizontal corpse spanning two cells; two rows; 田字格. "
+            )
+        else:
+            width_note = (
+                "Cell widths may differ: full weapon extension needs a WIDER cell; "
+                "never crop a body to 1/N of the strip. "
+            )
         layout_lock = (
             f"\n\nHARD LAYOUT: ONE horizontal ROW, EXACTLY {expected} FULL-BODY figures, no more no less. "
             f"FORBIDDEN: 2 rows, 2x5 contact sheet, bust/head row, 8 or 10 clones, or {expected + 1} people. "
@@ -2259,9 +2290,8 @@ def generate(body: GenerateBody) -> dict:
             "Identical mid-pose clones = fail. "
             "Adjacent silhouettes must differ at thumbnail size "
             "(legs, torso, and weapon — not a frozen body plus a tiny sword wiggle). "
-            "Cell widths may differ: lying down or full extension needs a WIDER cell; "
-            "never crop a body to 1/N of the strip. "
-            f"{STRIP_SEPARATION}"
+            f"{width_note}"
+            f"{strip_separation_for(body.slot_id)}"
         )
     else:
         layout_lock = ""
@@ -2280,6 +2310,8 @@ def generate(body: GenerateBody) -> dict:
                         retry = FX_CLONE_STRIP_RETRY.format(n=expected)
                     else:
                         retry = FX_STRIP_RETRY.format(n=expected)
+                elif body.slot_id in FALL_SLOTS:
+                    retry = FALL_STRIP_RETRY.format(n=expected)
                 else:
                     retry = STRIP_RETRY.format(n=expected)
                 use_prompt += f"\n\n{retry}"
@@ -2616,9 +2648,9 @@ def split_hero_slot(body: SplitBody) -> dict:
         variant = next_split_variant(hero_id, slot_id)
     variant = int(variant) % max(1, SPLIT_VARIANT_COUNT)
     # Real 2×2 contact sheets must unpack as a grid. Single-row 4-frame
-    # turnarounds are not 2×2 — skip that method or 重新切分 loops on an error.
+    # turnarounds and knockdown strips are not 2×2 — skip that method.
     grid = False
-    if frames == 4:
+    if frames == 4 and slot_id not in FALL_SLOTS:
         try:
             grid = bool(looks_like_grid_2x2(Image.open(src)))
         except Exception:  # noqa: BLE001
@@ -2628,7 +2660,7 @@ def split_hero_slot(body: SplitBody) -> dict:
     elif variant == 5:
         variant = 0
     try:
-        split_strip(src, draft_hero_frames_dir(hero_id, slot_id), frames, variant=variant)
+        split_strip(src, draft_hero_frames_dir(hero_id, slot_id), frames, variant=variant, slot_id=slot_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     # 记住开发者选的帧数，覆盖入库时 fighter.json 跟它走
@@ -3319,12 +3351,84 @@ def _portrait_slots_from_specs(specs: list | None, *, fallback_all: bool = False
     raw = []
     for s in specs or []:
         if hasattr(s, "model_dump"):
-            raw.append(s.model_dump())
+            item = s.model_dump()
+            # This is an explicit user plan edit, so its frame count is a base
+            # generation count, never a playback count.
+            if item.get("id") != "turnaround" and item.get("frames") is not None:
+                item["base_frames"] = item["frames"]
+            raw.append(item)
         elif isinstance(s, dict):
-            raw.append(s)
+            item = dict(s)
+            if item.get("id") != "turnaround" and item.get("frames") is not None:
+                item["base_frames"] = item["frames"]
+            raw.append(item)
         else:
             raw.append({"id": str(s)})
     return normalize_portrait_slot_list(raw, fallback_all=fallback_all)
+
+
+_LEGACY_PORTRAIT_BLUEPRINT = re.compile(
+    r"\n{2,}DEVELOPER MOTION BLUEPRINT \([^\n]*\):.*?(?=\n{2,}DEVELOPER MOTION BLUEPRINT \(|\Z)",
+    re.DOTALL,
+)
+
+
+def _clean_portrait_motion_prompt(prompt: str, *, explicit_view: str = "") -> str:
+    """Drop generated directives accidentally persisted by older portrait builds.
+
+    The editable prompt is the storyboard/base prompt; the current blueprint is
+    compiled once per request below.  Keeping old compiled blueprints creates
+    contradictory instructions on every retry.
+    """
+    text = _LEGACY_PORTRAIT_BLUEPRINT.sub("", str(prompt or "")).strip()
+    # Old desk-pet drafts embedded fighting-only rules into their saved prompt.
+    text = re.sub(r"\n{2,}IDLE FIGHT-READY.*?(?=\n{2,}|\Z)", "", text, flags=re.DOTALL)
+    text = re.sub(r"\n{2,}GROUND ACTING: feet on one shared baseline\.[^\n]*", "", text)
+    text = text.replace(
+        "ACTING: each silhouette must be obviously different at thumbnail size — change BOTH legs, torso lean, AND hands/props. Frozen body + tiny wiggle = fail. ",
+        "",
+    )
+    if explicit_view:
+        # A current front/three-quarter/back lock outranks obsolete generated
+        # side-view text. Do not remove it unless a blueprint explicitly chose
+        # another camera, so manually authored side-view prompts still work.
+        text = re.sub(
+            r"\s*Side-view profile facing RIGHT in every frame\. Nose to the RIGHT\. Not left\. Not 3/4\. Not front\.",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"\s*,\s*right-facing SIDE PROFILE", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _portrait_blueprint_view_lock(blueprint: dict) -> str:
+    """Turn common Chinese/English view requests into an unambiguous camera lock."""
+    raw = " ".join(str(blueprint.get(k) or "") for k in ("start", "peak", "end"))
+    low = raw.lower()
+    if any(term in raw for term in ("正脸", "正面", "面对屏幕", "面对镜头")) or any(
+        term in low for term in ("front-facing", "front facing", "front view", "face the camera")
+    ):
+        return (
+            "FRONT-VIEW LOCK (NON-NEGOTIABLE): every figure faces the viewer head-on. "
+            "Show both eyes and a symmetrical front torso; no side profile, no three-quarter turn, no right-facing camera."
+        )
+    if any(term in raw for term in ("背面", "背对", "背脸")) or any(term in low for term in ("back view", "rear view", "back-facing")):
+        return "BACK-VIEW LOCK (NON-NEGOTIABLE): every figure shows the character's back; no side or front view."
+    if any(term in raw for term in ("三分之四", "3/4", "四分之三")) or "three-quarter" in low:
+        return "THREE-QUARTER-VIEW LOCK (NON-NEGOTIABLE): keep the requested three-quarter camera in every figure."
+    return ""
+
+
+def _portrait_blueprint_beat(blueprint: dict, key: str, view_lock: str) -> str:
+    """Keep a front-view blueprint from contradicting itself with a reference phrase."""
+    value = str(blueprint.get(key) or "").strip()
+    if view_lock.startswith("FRONT-VIEW"):
+        # Users often mean "same silhouette as the turnaround" when writing
+        # this phrase, but image models read the literal side-view camera.
+        value = value.replace("与三视图侧视几乎一致", "与锁定三视图的正面造型一致")
+        value = value.replace("参考三视图侧视", "参考锁定三视图的正面造型")
+    return value
 
 
 def _portrait_payload(portrait_id: str, bible: dict | None = None) -> dict:
@@ -3448,6 +3552,22 @@ def save_portrait(body: PortraitSaveBody) -> dict:
             now = time.time()
             for sid in changed:
                 times[sid] = now
+    if body.motion_blueprints:
+        plan_ids = {s["id"] for s in resolve_portrait_slots(bible, fallback_all=True)}
+        # Save requests may contain only the fields edited in this browser.
+        # Merge them so an autosave from another card/window cannot erase an
+        # unrelated slot's blueprint.
+        blueprints: dict[str, dict] = dict(bible.get("motion_blueprints") or {})
+        for sid, raw in body.motion_blueprints.items():
+            if sid not in plan_ids or sid == "turnaround" or not isinstance(raw, dict):
+                continue
+            blueprints[sid] = {
+                "start": str(raw.get("start") or "").strip()[:500],
+                "peak": str(raw.get("peak") or "").strip()[:500],
+                "end": str(raw.get("end") or "").strip()[:500],
+                "loop": bool(raw.get("loop")),
+            }
+        bible["motion_blueprints"] = blueprints
     write_portrait_bible(pid, bible)
     return _portrait_payload(pid, bible)
 
@@ -3577,8 +3697,12 @@ def infer_portrait_slot(body: PortraitInferSlotBody) -> dict:
             raise HTTPException(400, f"未知立绘槽位 {body.slot_id}。")
     normalize_portrait_slot(slot)
     visual = bible.get("visual_lock") or ""
-    prev = (bible.get("prompts") or {}).get(body.slot_id) or ""
-    frames_n = int(slot.get("frames") or portrait_slot_frame_count(body.slot_id, bible))
+    # A micro-tune is scoped to one slot, but it must use the immutable base
+    # strip count.  Older projects could have a body-scale playback count in
+    # slot.frames; using it here was how an innocent “微调提示词” cemented
+    # `EXACTLY 8` into an originally five-frame action.
+    prev = _clean_portrait_motion_prompt((bible.get("prompts") or {}).get(body.slot_id) or "")
+    frames_n = portrait_slot_frame_count(body.slot_id, bible)
     note = (body.note or "").strip()
     user = (
         f"人物形象：{bible.get('appearance') or ''}\n"
@@ -3655,22 +3779,59 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
         else:
             raise HTTPException(400, f"未知立绘槽位 {body.slot_id}。请先在套图清单里勾选。")
     if body.frames:
-        slot = normalize_portrait_slot({**slot, "frames": body.frames})
+        # `body.frames` comes from the currently edited plan picker and is an
+        # explicit base-strip request.  Do not let an older slot's preserved
+        # base_frames override that user choice.
+        slot = normalize_portrait_slot({**slot, "frames": body.frames, "base_frames": body.frames})
     slot_meta = {**SLOT_BY_ID.get(body.slot_id, {}), **slot}
     normalize_portrait_slot(slot_meta)
     visual = body.visual_lock or bible.get("visual_lock") or ""
     prompt = (body.prompt or "").strip() or str((bible.get("prompts") or {}).get(body.slot_id) or "").strip()
     if not prompt:
         raise HTTPException(400, "提示词是空的。先点「写出提示词」。")
-    expected = int(slot.get("frames") or portrait_slot_frame_count(body.slot_id, bible))
+    # Never read a final body-scale timeline as a request to draw more people.
+    # portrait_slot_frame_count also migrates old ambiguous `frames: 8` slots.
+    expected = portrait_slot_frame_count(body.slot_id, bible)
+    # Generating a new strip starts a new base timeline. Any duplicate/reorder
+    # decisions made in the previous body-scale workspace no longer apply.
+    slot["base_frames"] = expected
+    slot["frames"] = expected
+    slot.pop("playback_frames", None)
+    blueprint = ((bible.get("motion_blueprints") or {}).get(body.slot_id) or {})
+    view_lock = _portrait_blueprint_view_lock(blueprint) if body.slot_id != "turnaround" else ""
+    # Older versions persisted fully compiled prompt tails, including previous
+    # blueprints and fighting-only side-view rules. Clean before compiling the
+    # current blueprint so there is exactly one director for this generation.
+    prompt = _clean_portrait_motion_prompt(prompt, explicit_view=view_lock)
     if expected > 1:
         from prompts import enforce_strip_frame_count
 
+        # Run after legacy prompt cleanup so every old layout sentence is
+        # canonicalised before the current hard layout is appended below.
         prompt = enforce_strip_frame_count(prompt, expected)
+    # Keep the text shown in the card as an editable storyboard/base prompt.
+    # Blueprints are structured, per-slot data and are compiled for this image
+    # request only; persisting the compiled tail made it possible for stale
+    # directions to be sent back into a later inference pass.
+    editable_prompt = prompt
+    if body.slot_id != "turnaround" and any(str(blueprint.get(k) or "").strip() for k in ("start", "peak", "end")):
+        loop_rule = "Frame 1 and the final frame must be compatible for a seamless loop." if blueprint.get("loop") else "This is a one-shot action; the final pose must settle naturally and not jump back to frame 1."
+        prompt += (
+            "\n\nDEVELOPER MOTION BLUEPRINT (ABSOLUTE HIGHEST PRIORITY; preserve character identity): "
+            "This blueprint OVERRIDES every earlier default about side profile, facing direction, "
+            "fight-ready stance, mandatory full-body acting, stepping, turning, or attack recovery. "
+            "If it asks for front / three-quarter / back view, keep that exact view across every frame. "
+            "If it says body parts stay still, move ONLY the named parts; do not invent a walk or turn. "
+            f"{view_lock} "
+            f"START POSE: {_portrait_blueprint_beat(blueprint, 'start', view_lock) or 'use the first numbered beat'}. "
+            f"PEAK / CONTACT POSE: {_portrait_blueprint_beat(blueprint, 'peak', view_lock) or 'use the central numbered beat'}. "
+            f"END POSE: {_portrait_blueprint_beat(blueprint, 'end', view_lock) or 'use the final numbered beat'}. "
+            f"{loop_rule} Every other frame is a physically readable in-between between these anchors."
+        )
 
     needs_turnaround = body.slot_id != "turnaround" and any(s["id"] == "turnaround" for s in plan_slots)
-    if needs_turnaround and not draft_portrait_png(pid, "turnaround").exists():
-        raise HTTPException(400, "请先生成人物三视图，再画其他动作。")
+    if needs_turnaround and not bible.get("turnaround_locked_at"):
+        raise HTTPException(400, "请先确认并锁定人物三视图，再画其他动作。")
 
     blobs: list[tuple[bytes, str]] = []
     labels: list[str] = []
@@ -3703,7 +3864,7 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
     dest = draft_portrait_png(pid, body.slot_id)
     settings = merge_settings(body.vertex.to_settings())
     strip = expected > 1
-    max_tries = body.max_tries if body.max_tries > 0 else (2 if strip else 1)
+    max_tries = body.max_tries if body.max_tries > 0 else (3 if strip else 1)
     max_tries = max(1, min(int(max_tries), 3))
 
     if body.slot_id == "turnaround":
@@ -3725,13 +3886,20 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
         )
 
     attempts = 0
+    scored_attempts: list[dict] = []
+    clear_portrait_candidates(pid, body.slot_id)
     try:
         while True:
             attempts += 1
             use_prompt = prompt + layout_lock
             if attempts > 1:
-                retry = TURNAROUND_RETRY if body.slot_id == "turnaround" else STRIP_RETRY.format(n=expected)
-                use_prompt += f"\n\n{retry}"
+                retry = TURNAROUND_RETRY if body.slot_id == "turnaround" else PORTRAIT_STRIP_RETRY.format(n=expected)
+                use_prompt += (
+                    f"\n\n{retry}\n"
+                    "CRITICAL CHROMA RETRY: the previous image used #00FFFF / cyan inside the character. "
+                    "That colour is background only and will be deleted. Repaint every wing, dress, hair, prop, "
+                    "and enclosed decorative area with emerald, navy, cream, gold, coral, magenta, or white — never cyan."
+                )
             with _IMAGE_SEM:
                 _save_draft(
                     dest=dest,
@@ -3741,17 +3909,34 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
                     settings=settings,
                     reference_labels=labels,
                 )
+            candidate_dir = draft_portrait_candidates_dir(pid, body.slot_id)
+            candidate_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dest, candidate_dir / f"{attempts:02d}.png")
+            layout = detect_strip_cells(Image.open(dest), expected) if strip else {"detected": 1, "rows": 1}
+            pipe = heuristic_score(dest.read_bytes(), {**slot_meta, "frames": expected})
+            div = diversity_score(pipe)
+            count_ok = layout.get("detected") == expected and layout.get("rows") == 1
+            need = 42 if body.slot_id == "idle" else 58
+            passed = count_ok and (div is None or div >= need)
+            scored_attempts.append({
+                "candidate": attempts,
+                "pipeline": int(pipe.get("pipeline") or 0),
+                "diversity": div,
+                "loop_difference": (pipe.get("meta") or {}).get("loop_difference"),
+                "layout_ok": count_ok,
+                "passed": passed,
+                "checks": pipe.get("checks") or [],
+            })
             if attempts >= max_tries or not strip:
                 break
-            layout = detect_strip_cells(Image.open(dest), expected)
-            count_ok = layout.get("detected") == expected and layout.get("rows") == 1
-            pipe = heuristic_score(dest.read_bytes(), slot_meta)
-            div = diversity_score(pipe)
-            need = 42 if body.slot_id == "idle" else 58
-            if count_ok and (div is None or div >= need):
+            if passed:
                 break
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
+
+    # A retry must not silently replace a better prior candidate.
+    winner = max(scored_attempts, key=lambda x: (x["passed"], x["pipeline"], x["diversity"] or 0))
+    shutil.copy2(draft_portrait_candidates_dir(pid, body.slot_id) / f"{winner['candidate']:02d}.png", dest)
 
     plan_map = {s["id"]: dict(s) for s in plan_slots}
     plan_map[body.slot_id] = slot
@@ -3768,9 +3953,20 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
         bible["display_name"] = body.display_name
     if visual:
         bible["visual_lock"] = visual
+    if body.slot_id == "turnaround":
+        # A regenerated identity sheet needs an explicit fresh confirmation.
+        bible.pop("turnaround_locked_at", None)
     prompts = bible.get("prompts") or {}
-    prompts[body.slot_id] = prompt
+    prompts[body.slot_id] = editable_prompt
     bible["prompts"] = prompts
+    bible.setdefault("generation_quality", {})[body.slot_id] = {
+        "selected": winner["candidate"],
+        "passed": winner["passed"],
+        "pipeline": winner["pipeline"],
+        "diversity": winner["diversity"],
+        "loop_difference": winner["loop_difference"],
+        "attempts": scored_attempts,
+    }
     write_portrait_bible(pid, bible)
     # New draft invalidates frozen source / split / cyan exports for this slot.
     reset_portrait_slot_derivatives(pid, body.slot_id)
@@ -3781,7 +3977,48 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
         "missing_refs": missing,
         "used_refs": used,
         "attempts": attempts,
+        "quality": bible["generation_quality"][body.slot_id],
     }
+
+
+@app.post("/api/portraits/lock-turnaround")
+def lock_portrait_turnaround(body: PortraitLockTurnaroundBody) -> dict:
+    _require_deskpet()
+    pid = _safe_id(body.portrait_id)
+    bible = read_portrait_bible(pid)
+    if not bible or not draft_portrait_png(pid, "turnaround").exists():
+        raise HTTPException(400, "请先生成满意的人物三视图。")
+    bible["turnaround_locked_at"] = time.time()
+    write_portrait_bible(pid, bible)
+    return _portrait_payload(pid, bible)
+
+
+@app.post("/api/portraits/adopt-candidate")
+def adopt_candidate(body: PortraitCandidateBody) -> dict:
+    _require_deskpet()
+    pid = _safe_id(body.portrait_id)
+    bible = read_portrait_bible(pid)
+    if not bible:
+        raise HTTPException(404, "没有这个立绘。")
+    try:
+        adopt_portrait_candidate(pid, body.slot_id, int(body.candidate))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    quality = (bible.setdefault("generation_quality", {}).get(body.slot_id) or {})
+    # Candidate quality is per image.  Do not leave a failed selected state
+    # after a user deliberately switches to a passing retry.
+    selected_attempt = next(
+        (x for x in (quality.get("attempts") or []) if int(x.get("candidate") or 0) == int(body.candidate)),
+        None,
+    )
+    if selected_attempt:
+        for key in ("passed", "pipeline", "diversity", "loop_difference"):
+            if key in selected_attempt:
+                quality[key] = selected_attempt[key]
+    quality["selected"] = int(body.candidate)
+    bible["generation_quality"][body.slot_id] = quality
+    write_portrait_bible(pid, bible)
+    return _portrait_payload(pid, bible)
 
 
 @app.post("/api/portraits/split")
@@ -3795,6 +4032,13 @@ def split_portrait(body: PortraitSplitBody) -> dict:
     n = body.frames
     if n is None:
         n = portrait_slot_frame_count(body.slot_id, bible)
+    quality = (bible.get("generation_quality") or {}).get(body.slot_id) or {}
+    existing = portrait_asset_view(pid, body.slot_id, bible)
+    if quality.get("pipeline") is not None and not quality.get("passed") and not existing.get("timeline_final"):
+        raise HTTPException(
+            409,
+            "这版草稿的格数/布局质检未通过，已阻止切分，避免把多人物错误切成动画帧。请再出一版草稿或改用通过质检的候选。",
+        )
     try:
         split_portrait_strip(
             pid,

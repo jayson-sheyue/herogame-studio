@@ -200,6 +200,76 @@ class StudioApiTests(unittest.IsolatedAsyncioTestCase):
             unknown = await self.post("/api/portraits/export", {"portrait_id": "sample", "slot_id": "unknown"})
             self.assertEqual(unknown.status_code, 400)
 
+    async def test_blueprint_partial_save_preserves_other_action_and_rejects_stale_revision(self):
+        await self.portrait()
+        bible = self.server.read_portrait_bible("sample")
+        bible["motion_blueprints"] = {"walk": {"start": "keep this action", "loop": True}}
+        self.server.write_portrait_bible("sample", bible)
+        current = (await self.client.get("/api/portraits/sample")).json()
+        body = {"portrait_id": "sample", "expected_revision": current["revision"],
+                "motion_blueprints": {"idle": {"start": "front-facing", "peak": "small breath", "end": "settle", "loop": True}}}
+        saved = await self.post("/api/portraits/save", body)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["motion_blueprints"]["walk"]["start"], "keep this action")
+        self.assertEqual(saved.json()["motion_blueprints"]["idle"]["peak"], "small breath")
+        stale = await self.post("/api/portraits/save", {**body, "motion_blueprints": {"idle": {"start": "stale"}}})
+        self.assertEqual(stale.status_code, 409)
+        current = (await self.client.get("/api/portraits/sample")).json()
+        self.assertEqual(current["motion_blueprints"]["idle"]["start"], "front-facing")
+
+    async def test_candidate_adoption_selects_image_and_its_quality_together(self):
+        await self.portrait()
+        import portrait_assets as assets
+        folder = assets.draft_portrait_candidates_dir("sample", "idle")
+        folder.mkdir(parents=True)
+        for number, color in [(1, (180, 80, 60, 255)), (2, (90, 140, 40, 255))]:
+            Image.new("RGBA", (24, 24), color).save(folder / f"{number:02d}.png")
+        bible = self.server.read_portrait_bible("sample")
+        bible["generation_quality"] = {"idle": {"selected": 1, "passed": False, "pipeline": 10,
+            "attempts": [{"candidate": 1, "passed": False, "pipeline": 10}, {"candidate": 2, "passed": True, "pipeline": 90}]}}
+        self.server.write_portrait_bible("sample", bible)
+        selected = await self.post("/api/portraits/adopt-candidate", {"portrait_id": "sample", "slot_id": "idle", "candidate": 2})
+        self.assertEqual(selected.status_code, 200, selected.text)
+        self.assertEqual(assets.draft_portrait_png("sample", "idle").read_bytes(), (folder / "02.png").read_bytes())
+        quality = assets.read_portrait_bible("sample")["generation_quality"]["idle"]
+        self.assertEqual((quality["selected"], quality["passed"], quality["pipeline"]), (2, True, 90))
+        rejected = await self.post("/api/portraits/adopt-candidate", {"portrait_id": "sample", "slot_id": "idle", "candidate": 99})
+        self.assertEqual(rejected.status_code, 400)
+        self.assertEqual(assets.read_portrait_bible("sample")["generation_quality"]["idle"], quality)
+
+    async def test_final_timeline_reopen_preserves_base_strip_and_playback_frames(self):
+        await self.portrait()
+        import portrait_assets as assets
+        from PIL import ImageDraw
+        bible = assets.read_portrait_bible("sample")
+        bible["slots"] = [{"id": "turnaround", "frames": 4}, {"id": "idle", "frames": 3, "base_frames": 3, "playback_frames": 5}]
+        assets.write_portrait_bible("sample", bible)
+        draft = assets.draft_portrait_png("sample", "idle")
+        draft.parent.mkdir(parents=True, exist_ok=True)
+        original = Image.new("RGBA", (120, 48), (0, 255, 255, 255))
+        draw = ImageDraw.Draw(original)
+        for index in range(3): draw.rectangle((index * 40 + 10, 8, index * 40 + 28, 40), fill=(80, 60, 40, 255))
+        original.save(draft)
+        source = assets.ensure_portrait_split_source("sample", "idle")
+        source_bytes = source.read_bytes()
+        Image.new("RGBA", (200, 48), (80, 60, 40, 255)).save(draft)
+        folder = assets.draft_portrait_frames_dir("sample", "idle")
+        folder.mkdir(parents=True)
+        for index in range(5): Image.new("RGBA", (40, 48), (80, 60, 40, 255)).save(folder / f"{index:02d}.png")
+        write_json(folder / "cells.json", {"source": "portrait_body_scale"})
+        before = {file.name: file.read_bytes() for file in folder.glob("*.png")}
+        self.assertEqual(len(assets.ensure_portrait_equal_frames("sample", "idle", bible=bible)), 5)
+        self.assertEqual({file.name: file.read_bytes() for file in folder.glob("*.png")}, before)
+        self.assertEqual(assets.ensure_portrait_split_source("sample", "idle").read_bytes(), source_bytes)
+        view = assets.portrait_asset_view("sample", "idle", bible)
+        self.assertEqual((view["base_frame_count"], view["frame_count"], view["timeline_final"]), (3, 5, True))
+        self.assertFalse(view["frames_stale"])
+        assets.split_portrait_strip("sample", "idle", bible=bible)
+        self.assertEqual(len(assets.list_portrait_split_frames("sample", "idle")), 3)
+        slot = next(item for item in assets.read_portrait_bible("sample")["slots"] if item["id"] == "idle")
+        self.assertEqual(slot["base_frames"], 3)
+        self.assertNotIn("playback_frames", slot)
+
     async def test_failed_frame_export_preserves_previous_results_and_retry_writes_real_pngs(self):
         await self.portrait()
         import portrait_assets

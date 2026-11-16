@@ -49,6 +49,9 @@ const state = {
 };
 
 const playback = { kind: "hero", slotId: null, timer: 0, index: 0, fps: 8, urls: [], stage: null };
+const FALL_SLOTS = new Set(["hurt", "air_hurt", "defeat_cg"]);
+// Only submit the portrait fields touched in this tab.  This avoids a quiet
+// autosave from an older tab overwriting unrelated slot prompts/blueprints.
 const portraitDirty = { prompts: new Set(), blueprints: new Set(), fields: new Set() };
 
 function heroBriefFromForm() {
@@ -1258,14 +1261,30 @@ function writeSplitFramesChoice(slotId, n) {
 }
 
 function readSplitFramesChoice(slotId, asset, slot) {
-  const flexible = Boolean(asset?.split_frames_flexible ?? ((Number(slot?.frames || 0) >= 5) && slotId !== "turnaround" && !String(slotId).startsWith("fx_")));
-  const fallback = Number(asset?.frame_count || slot?.frames || 5);
+  const flexible = Boolean(asset?.split_frames_flexible ?? ((FALL_SLOTS.has(slotId) || Number(slot?.frames || 0) >= 5) && slotId !== "turnaround" && !String(slotId).startsWith("fx_")));
+  const fallback = Number(asset?.frame_count || slot?.frames || (FALL_SLOTS.has(slotId) ? 4 : 5));
   if (!flexible) return fallback;
   const heroId = currentHeroId();
+  let saved = 0;
   try {
-    const saved = Number(localStorage.getItem(splitFramesPrefKey(heroId, slotId)));
+    saved = Number(localStorage.getItem(splitFramesPrefKey(heroId, slotId)));
+  } catch {
+    /* ignore */
+  }
+  const committedN = Number(asset?.frame_count || 0);
+  const splitN = (asset?.frames || []).length;
+  if (FALL_SLOTS.has(slotId)) {
+    // 倒地新图默认 4 帧单行。不要把 4 当成奥义 2×2 田字格。旧 5 帧图跟已切帧/入库帧数走。
+    if (splitN >= 2 && splitN <= 24) return splitN;
+    if (committedN >= 2 && committedN <= 24 && asset?.committed) return committedN;
+    if (saved === 5 || saved === 6) {
+      if (Number(asset?.detected) === saved) return saved;
+    }
+    if (saved === 4) return 4;
+    return Number(slot?.frames || 4);
+  }
+  try {
     // Prefer committed asset frame_count when local pref is stale (e.g. body-scale shortened 6→4).
-    const committedN = Number(asset?.frame_count || 0);
     if (saved >= 1 && saved <= 24) {
       if (committedN >= 1 && committedN <= 24 && committedN !== saved && asset?.committed) {
         return committedN;
@@ -1279,8 +1298,8 @@ function readSplitFramesChoice(slotId, asset, slot) {
   if (asset?.grid === "2x2" || (Number(asset?.rows || 1) === 2 && Number(asset?.detected || 0) === 4)) {
     return 4;
   }
-  if ((asset?.frames || []).length >= 1 && (asset?.frames || []).length <= 24) {
-    return (asset.frames || []).length;
+  if (splitN >= 1 && splitN <= 24) {
+    return splitN;
   }
   if (Number(asset?.detected) === 6) return 6;
   if (Number(asset?.detected) === 5) return 5;
@@ -1326,7 +1345,7 @@ function cardHtml(slot, prompt, asset, downloadName, kind = "hero") {
   const frozenStyle = kind === "style" && styleFrozen();
   const url = bustUrl(asset?.url || "", slot.id);
   const slotFrames = Number(slot.frames || asset?.slot_frames || asset?.frame_count || 0);
-  const flexible = kind === "hero" && Boolean(asset?.split_frames_flexible ?? (slotFrames >= 5))
+  const flexible = kind === "hero" && Boolean(asset?.split_frames_flexible ?? (FALL_SLOTS.has(slot.id) || slotFrames >= 5))
     && slot.id !== "turnaround" && !String(slot.id).startsWith("fx_");
   const frameCount = flexible ? readSplitFramesChoice(slot.id, asset, slot) : Number(asset?.frame_count || slotFrames || 0);
   const canStrip = kind === "hero" && Math.max(slotFrames, frameCount) > 1 && Boolean(url);
@@ -1343,7 +1362,8 @@ function cardHtml(slot, prompt, asset, downloadName, kind = "hero") {
   const showGuides = canStrip && url && !showFrames && guideCells.length;
   const layoutOff = canStrip && Number(asset?.detected || 0) > 0
     && (Number(asset.detected) !== frameCount || Number(asset.rows || 1) !== 1);
-  const isGrid2x2 = asset?.grid === "2x2" || (Number(asset?.rows || 1) === 2 && Number(asset?.detected || 0) === 4);
+  const isFall = FALL_SLOTS.has(slot.id);
+  const isGrid2x2 = !isFall && (asset?.grid === "2x2" || (Number(asset?.rows || 1) === 2 && Number(asset?.detected || 0) === 4));
   const badge = committed && splitPending
     ? `<span class="badge in">已入库</span><span class="badge draft">新切法未写入</span>`
     : draft && committed
@@ -1358,9 +1378,17 @@ function cardHtml(slot, prompt, asset, downloadName, kind = "hero") {
   const thumbInner = showFrames
     ? frames.map((f, i) => `<button type="button" class="split-preview" data-preview-src="${f.url}"><b>${i + 1}</b><img src="${f.url}" alt="帧 ${i + 1}" loading="lazy" decoding="async" /></button>`).join("")
     : `${url ? `<img src="${url}" alt="${slot.title}" loading="lazy" decoding="async" />` : `<span class="ph">尚未生成</span>`}
-        ${showGuides ? `<div class="split-guides" data-guides="${slot.id}" hidden>${guideCells.map((c, i) => `<span class="split-cell" style="left:${(c.x || 0) * 100}%;top:${(c.y || 0) * 100}%;width:${(c.w || 0) * 100}%;height:${(c.h || 1) * 100}%"><b>${i + 1}</b></span>`).join("")}</div>` : ""}`;
+        ${showGuides ? `<div class="split-guides${FALL_SLOTS.has(slot.id) ? " is-contour" : ""}" data-guides="${slot.id}" hidden>${guideCells.map((c, i) => `<span class="split-cell" style="left:${(c.x || 0) * 100}%;top:${(c.y || 0) * 100}%;width:${(c.w || 0) * 100}%;height:${(c.h || 1) * 100}%"><b>${i + 1}</b></span>`).join("")}</div>` : ""}`;
   const splitFramesCtl = flexible
-    ? `<label class="split-frames" title="新图默认 5 帧。旧图若仍是 6 人选 6；2×2 宫格选 4。">切
+    ? isFall
+      ? `<label class="split-frames" title="倒地新图默认 4 帧单行横条。旧的 5 帧图选 5。不要用奥义那种 2×2 田字格。">切
+        <select data-split-frames="${slot.id}">
+          <option value="4" ${frameCount === 4 ? "selected" : ""}>4 帧（单行横条）</option>
+          <option value="5" ${frameCount === 5 ? "selected" : ""}>5 帧（旧图）</option>
+          <option value="6" ${frameCount === 6 ? "selected" : ""}>6 帧（旧图）</option>
+        </select>
+      </label>`
+      : `<label class="split-frames" title="新图默认 5 帧。旧图若仍是 6 人选 6；误生成的 2×2 宫格选 4。">切
         <select data-split-frames="${slot.id}">
           <option value="4" ${frameCount === 4 ? "selected" : ""}>4 帧（2×2 宫格）</option>
           <option value="5" ${frameCount === 5 ? "selected" : ""}>5 帧</option>
@@ -1381,6 +1409,7 @@ function cardHtml(slot, prompt, asset, downloadName, kind = "hero") {
         ${thumbInner}
       </div>
       ${canStrip && frames.length ? `<div class="play-bay" data-play-bay="${slot.id}"><img class="play-stage" alt="帧动画" /><span class="ph">点播放：同一位置循环 ${frames.length || frameCount} 帧</span></div>` : ""}
+      ${showGuides && isFall ? `<p class="strip-note is-info">倒地新图默认 4 帧单行横条（比 5 帧每格更宽），不是奥义那种 2×2 田字格。黄线只是等宽参考；请先「一键切分」按轮廓装箱。旧的 5 帧图可在旁边改选 5。</p>` : ""}
       ${isGrid2x2 && !showFrames ? `<p class="strip-note is-info">检出 2×2 宫格。选「4 帧（2×2 宫格）」再切，会展开成单行四幕，不必重出图。</p>` : ""}
       ${layoutOff && !isGrid2x2 ? `<p class="strip-note">检出 ${asset.detected} 格 / ${asset.rows || 1} 行，当前按 ${frameCount} 帧切。框已按人物对齐；可改旁边「4/5/6 帧」再切，或重出图。</p>` : ""}
       ${canStrip && asset?.frames_stale ? `<p class="strip-note">套图已更新，请重新切分再播放。</p>` : ""}
@@ -3053,6 +3082,10 @@ function portraitCardHtml(slot) {
   const pid = currentPortraitId();
   const busy = JOBS.keys.has(`portrait-gen:${pid}:${slot.id}`);
   const n = Number(asset.frame_count || slot.frames || 5);
+  const baseN = Number(asset.base_frame_count || slot.frames || n);
+  const timelineFinal = Boolean(asset.timeline_final);
+  const splitVariants = Math.max(1, Number(asset.split_variants || 8));
+  const nextSplitVariant = ((Number(asset.split_variant || 0) + 1) % splitVariants) + 1;
   const showFrames = frameUrls.length > 0 && !asset.frames_stale;
   const playing = playback.kind === "portrait" && playback.slotId === slot.id && playback.timer;
   const thumbInner = showFrames
@@ -3071,6 +3104,26 @@ function portraitCardHtml(slot) {
       ? `<span class="badge draft">草稿</span>`
       : "";
   const zh = state.portrait?.prompts_zh?.[slot.id] || "";
+  const quality = asset.quality || {};
+  const generationRejected = quality.pipeline != null && !quality.passed && !timelineFinal;
+  const candidates = asset.candidates || [];
+  const qualityNote = quality.pipeline != null
+    ? `<p class="strip-note ${quality.passed ? "is-info" : ""}">质检：${quality.passed ? "通过" : "布局不合格，已阻止切分"} · 综合 ${quality.pipeline}/100 · 帧差 ${quality.diversity ?? "—"}${quality.loop_difference != null ? ` · 首尾差 ${quality.loop_difference}` : ""}${candidates.length > 1 ? ` · 保留 ${candidates.length} 个候选` : ""}</p>`
+    : "";
+  const candidatePicker = candidates.length > 1
+    ? `<div class="candidate-picker"><small>候选版本（当前为 ${quality.selected || 1}）：</small>${candidates.map((u, i) => `<button type="button" data-portrait-candidate="${slot.id}" data-candidate-index="${i + 1}" class="${Number(quality.selected) === i + 1 ? "on" : ""}" title="采用候选 ${i + 1}"><img src="${u}" alt="候选 ${i + 1}" loading="lazy" />${i + 1}</button>`).join("")}</div>`
+    : "";
+  const turnaroundLocked = Boolean(state.portrait?.turnaround_locked_at);
+  const blueprint = state.portrait?.motion_blueprints?.[slot.id] || {};
+  const isMotion = slot.id !== "turnaround";
+  const blueprintBox = isMotion
+    ? `<details class="motion-blueprint"><summary>动作蓝图 <small>先定起势、峰值、收势，再生图</small></summary>
+        <label>起势 <input data-portrait-blueprint="${slot.id}" data-blueprint-field="start" value="${escapeHtml(blueprint.start || "")}" placeholder="例如：双脚平站，手垂在身侧" /></label>
+        <label>峰值/接触 <input data-portrait-blueprint="${slot.id}" data-blueprint-field="peak" value="${escapeHtml(blueprint.peak || "")}" placeholder="例如：右手举到肩上，手掌向外" /></label>
+        <label>收势 <input data-portrait-blueprint="${slot.id}" data-blueprint-field="end" value="${escapeHtml(blueprint.end || "")}" placeholder="例如：手落回自然站姿" /></label>
+        <label><input type="checkbox" data-portrait-blueprint="${slot.id}" data-blueprint-field="loop" ${blueprint.loop ? "checked" : ""} /> 首尾应无缝循环</label>
+      </details>`
+    : "";
   const playSrcNote =
     exports.length >= 2 && !asset.exports_stale
       ? "已导出透明帧"
@@ -3081,29 +3134,34 @@ function portraitCardHtml(slot) {
     <header>
       <div>
         <b>${escapeHtml(slot.title || slot.id)}${badge}</b>
-        <div><small>${escapeHtml(slot.hint || "")}</small></div>
+        <div><small>${escapeHtml(slot.hint || "")}${timelineFinal ? ` · 已在身长工作区定稿：基础 ${baseN} 帧 → 最终 ${n} 帧` : ""}</small></div>
       </div>
       <small>${escapeHtml(slot.aspect || "21:9")} · ${n} 帧</small>
     </header>
     <div class="thumb${showFrames ? " is-frames" : ""}"${showFrames || !draftUrl ? "" : ` data-preview="${draftUrl}"`}>
       ${thumbInner}
     </div>
+    ${showFrames ? `<p class="strip-note is-info">这是切分预览，保留青底以便检查格子；点“去青导出”后的播放区/导出 PNG 才是透明底。</p>` : ""}
     ${canPlay ? `<div class="play-bay" data-play-bay="${slot.id}"><img class="play-stage" alt="帧动画" /><span class="ph">点播放：同一位置循环 ${playUrls.length} 帧（${playSrcNote}）</span></div>` : ""}
     ${asset.frames_stale && frameUrls.length ? `<p class="strip-note">草稿已更新，请重新切分再播放/导出。</p>` : ""}
     ${asset.exports_stale && exports.length ? `<p class="strip-note">去青导出已过期（对应旧草稿）。请重新「去青导出」，否则预览仍是旧透明帧。</p>` : ""}
     ${exports.length && !asset.exports_stale ? `<p class="strip-note is-info">已去青导出 ${exports.length} 帧透明 PNG（不进对战）。</p>` : ""}
+    ${qualityNote}
+    ${candidatePicker}
     <div class="prompt-box">
       <span class="prompt-age" data-portrait-prompt-age="${slot.id}" hidden></span>
       <textarea data-portrait-prompt="${slot.id}" rows="5" title="可直接改英文生图词；也可点「微调提示词」按意见重写。">${escapeHtml(prompt)}</textarea>
       ${zh ? `<p class="prompt-zh"><b>中文对照</b> ${escapeHtml(zh)}</p>` : ""}
     </div>
+    ${blueprintBox}
     <div class="row">
       <button type="button" data-portrait-gen="${slot.id}" ${!pid || busy ? "disabled" : ""}>${draftUrl ? "再出一版草稿" : "生成草稿"}</button>
+      ${slot.id === "turnaround" && draftUrl ? `<button type="button" data-portrait-lock-turnaround="1" ${turnaroundLocked ? "disabled" : ""}>${turnaroundLocked ? "三视图已锁定" : "确认并锁定三视图"}</button>` : ""}
       ${pid ? `<button type="button" data-portrait-reprompt="${slot.id}" ${busy ? "disabled" : ""} title="写出不满意的点，系统重写本槽英文提示词；再点生成草稿出新图">微调提示词</button>` : ""}
       ${draftUrl ? `<button type="button" data-portrait-discard="${slot.id}">丢弃草稿</button>` : ""}
-      <button type="button" data-portrait-split="${slot.id}" ${!draftUrl ? "disabled" : ""}>${showFrames ? "重新切分" : `一键切分（${n} 帧）`}</button>
+      <button type="button" data-portrait-split="${slot.id}" ${!draftUrl || generationRejected ? "disabled" : ""} title="${generationRejected ? "当前草稿检出的人物/格数不等于设定帧数；请重新生成，系统不会把它切坏。" : timelineFinal ? `将丢弃当前最终时间线，重置为原始 ${baseN} 帧切分` : "切分基础关键帧；切分后可进入身长工作区扩帧和重排"}">${generationRejected ? "草稿格数不合格" : timelineFinal ? `重置为基础 ${baseN} 帧` : showFrames ? `换一种切法（${nextSplitVariant}/${splitVariants}）` : `一键切分（${baseN} 帧）`}</button>
       ${canPlay ? `<button type="button" data-portrait-play="${slot.id}">${playing ? "停止" : "播放"}</button>` : ""}
-      <button type="button"${exports.length && !asset.exports_stale ? "" : ` class="primary"`} data-portrait-export="${slot.id}" ${!draftUrl && !showFrames ? "disabled" : ""} title="${exports.length ? "已有透明导出，再点会覆盖该槽导出目录" : "切分后去青导出透明 PNG"}">${exports.length && !asset.exports_stale ? "重新去青导出" : "去青导出"}</button>
+      <button type="button"${exports.length && !asset.exports_stale ? "" : ` class="primary"`} data-portrait-export="${slot.id}" ${(!draftUrl && !showFrames) || generationRejected ? "disabled" : ""} title="${generationRejected ? "当前草稿布局不合格，不能导出为动画。" : exports.length ? "已有透明导出，再点会覆盖该槽导出目录" : "切分后去青导出透明 PNG"}">${exports.length && !asset.exports_stale ? "重新去青导出" : "去青导出"}</button>
       ${exports.length ? `<button type="button" data-portrait-reveal="${slot.id}" title="在 Finder 中打开该槽导出目录">打开文件夹</button>` : ""}
       ${draftUrl ? `<a class="dl" href="${draftUrl}" download="${pid}_${slot.id}.png">下载草稿</a>` : ""}
     </div>
@@ -3461,8 +3519,8 @@ async function generateAllPortraits() {
     setStatus("请先把风格锚点采用入库。", "bad");
     return;
   }
-  if (!portraitHasDraft("turnaround")) {
-    setStatus("请先单独生成并确认「人物三视图」，再一键生成其余动作。", "bad");
+  if (!state.portrait?.turnaround_locked_at) {
+    setStatus("请先生成、确认并锁定「人物三视图」，再一键生成其余动作。", "bad");
     return;
   }
   if (!(await flushPortraitSave())) return false;
@@ -3502,25 +3560,62 @@ async function generateAllPortraits() {
   }
 }
 
+async function lockPortraitTurnaround() {
+  const pid = currentPortraitId();
+  if (!pid) return;
+  try {
+    const data = await api("/api/portraits/lock-turnaround", {
+      method: "POST",
+      body: JSON.stringify({ portrait_id: pid }),
+    });
+    applyPortraitPayload(data);
+    setStatus("人物三视图已锁定；后续动作将以它为身份基准。", "ok");
+  } catch (err) {
+    setStatus(err.message || String(err), "bad");
+  }
+}
+
+async function adoptPortraitCandidate(slotId, candidate) {
+  const pid = currentPortraitId();
+  if (!pid) return;
+  try {
+    const data = await api("/api/portraits/adopt-candidate", {
+      method: "POST",
+      body: JSON.stringify({ portrait_id: pid, slot_id: slotId, candidate }),
+    });
+    applyPortraitPayload(data);
+    setStatus(`已采用「${slotId}」候选 ${candidate}；请重新切分再播放/导出。`, "ok");
+  } catch (err) {
+    setStatus(err.message || String(err), "bad");
+  }
+}
+
 async function splitPortraitSlot(slotId) {
   const pid = currentPortraitId();
   if (!pid) return;
   if (!(await flushPortraitSave())) return false;
   const wasPlaying = playback.kind === "portrait" && playback.slotId === slotId && playback.timer;
+  const asset = state.portraitAssets?.[slotId] || {};
+  if (asset.timeline_final) {
+    const baseN = Number(asset.base_frame_count || 5);
+    if (!confirm(`这会丢弃身长工作区已确定的最终 ${asset.frame_count} 帧时间线，并从原始草稿重新切为基础 ${baseN} 帧。确定重置吗？`)) return;
+  }
+  const variants = Math.max(1, Number(asset.split_variants || 8));
+  const variant = asset.split_count ? (Number(asset.split_variant || 0) + 1) % variants : 0;
   const key = `portrait-split:${pid}:${slotId}`;
   if (JOBS.keys.has(key)) return;
   JOBS.keys.add(key);
   try {
     const data = await api("/api/portraits/split", {
       method: "POST",
-      body: JSON.stringify({ portrait_id: pid, slot_id: slotId }),
+      body: JSON.stringify({ portrait_id: pid, slot_id: slotId, variant }),
     });
     if (data.asset && currentPortraitId() === pid) {
       state.portraitAssets[slotId] = data.asset;
       renderPortraitBoard();
       if (wasPlaying) await startPlayback(slotId, { kind: "portrait" });
     }
-    setStatus(`「${slotId}」已切成 ${data.frames?.length || 0} 帧。可点「播放」预览动图。`, "ok");
+    setStatus(`「${slotId}」已切成 ${data.frames?.length || 0} 帧（${data.asset?.split_label || "新切法"} · ${Number(data.asset?.split_variant || 0) + 1}/${variants}）。切分只改变格子边界；透明洞请重新去青导出验证。`, "ok");
   } catch (err) {
     setStatus(err.message || String(err), "bad");
   } finally {
@@ -4539,29 +4634,18 @@ function cellForPlay(slotId, index) {
   return { x: 0, y: 0, w: 1 / n, h: 1 };
 }
 
-function layoutPlayStage(slotId) {
+function layoutPlayStage(_slotId) {
+  // Play-stage src is already a cropped frame PNG. Fit that bitmap into the
+  // bay. Do NOT scale by strip cell fractions against the thumb: after split
+  // (and after 身长校对) the thumb shows per-frame images, so cell.w=1/n would
+  // squash the character into a vertical sliver.
   const stage = playback.stage;
-  if (!stage) return;
-  if (playback.kind === "portrait") {
-    const bay = stage.closest(".play-bay");
-    if (!bay || !stage.naturalWidth) return;
-    const r = containRect(bay.clientWidth, bay.clientHeight, stage.naturalWidth, stage.naturalHeight);
-    stage.style.width = `${Math.max(1, r.w)}px`;
-    stage.style.height = `${Math.max(1, r.h)}px`;
-    return;
-  }
-  const view = stripView(slotId);
-  if (!view) return;
-  const cell = cellForPlay(slotId, playback.index);
-  const px = cell.px;
-  const w = px?.w
-    ? px.w * view.scale
-    : Math.max(1, (Number(cell.w) || 1) * view.img.naturalWidth * view.scale);
-  const h = px?.h
-    ? px.h * view.scale
-    : Math.max(1, (Number(cell.h) || 1) * view.img.naturalHeight * view.scale);
-  stage.style.width = `${Math.max(1, w)}px`;
-  stage.style.height = `${Math.max(1, h)}px`;
+  if (!stage || !stage.naturalWidth) return;
+  const bay = stage.closest(".play-bay");
+  if (!bay) return;
+  const r = containRect(bay.clientWidth, bay.clientHeight, stage.naturalWidth, stage.naturalHeight);
+  stage.style.width = `${Math.max(1, r.w)}px`;
+  stage.style.height = `${Math.max(1, r.h)}px`;
 }
 
 function paintGuides(slotId) {
@@ -4640,13 +4724,12 @@ function armPlaybackTimer() {
 function portraitAnimUrls(slotId) {
   const asset = state.portraitAssets?.[slotId] || {};
   const exports = asset.exports || [];
-  // Prefer fresh cyan-key exports; if draft/split moved on, fall back to split
-  // frames so play bay doesn't keep a hollow/stale keyed preview.
+  // Never fall back to an old export/frame pair. The workspace can have a
+  // newer, correctly aligned timeline while a card still holds the previous
+  // cut; playing that stale pair makes the card look "broken".
   if (exports.length >= 2 && !asset.exports_stale) return exports.slice();
   const frames = asset.frames || [];
   if (frames.length >= 2 && !asset.frames_stale) return frames.slice();
-  if (exports.length >= 2) return exports.slice();
-  if (frames.length >= 2) return frames.slice();
   return [];
 }
 
@@ -4754,9 +4837,16 @@ async function playPortraitSlot(slotId) {
     stopPlayback();
     return;
   }
+  const asset = state.portraitAssets?.[slotId] || {};
   const urls = portraitAnimUrls(slotId);
   if (urls.length < 2) {
-    setStatus("请先切分（或去青导出）出至少 2 帧，再播放动图预览。", "bad");
+    const stale = asset.frames_stale || asset.exports_stale;
+    setStatus(
+      stale
+        ? "草稿卡片仍是旧切分/旧导出，不能播放。请在身长校对工作区点「保存本套并导出」，或重新切分后去青导出。"
+        : "请先切分（或去青导出）出至少 2 帧，再播放动图预览。",
+      "bad"
+    );
     return;
   }
   await startPlayback(slotId, { kind: "portrait" });
@@ -5199,7 +5289,10 @@ function syncBodyScaleToolControls() {
   if ($("bodyScaleSelectAll")) $("bodyScaleSelectAll").disabled = !has || BODY_WS.busy;
   if ($("bodyScaleResetFrame")) $("bodyScaleResetFrame").disabled = !has || BODY_WS.busy;
   if ($("bodyScaleSuggest")) $("bodyScaleSuggest").disabled = !has || BODY_WS.busy;
-  if ($("bodyScaleSave")) $("bodyScaleSave").disabled = !has || BODY_WS.busy;
+  if ($("bodyScaleSave")) {
+    $("bodyScaleSave").disabled = !has || BODY_WS.busy;
+    $("bodyScaleSave").textContent = BODY_WS.kind === "portrait" ? "保存本套并导出" : "保存本套并入库";
+  }
   if ($("bodyScaleResplit")) $("bodyScaleResplit").disabled = !(BODY_WS.detail?.frames?.length) || BODY_WS.busy;
   const canMove = has && !BODY_WS.busy && n > 1;
   const moveBlock = (() => {
@@ -5475,14 +5568,9 @@ async function loadBodyScaleSlot(index, { force = false } = {}) {
     BODY_WS.detail = data;
     syncBodyScaleGuideControls(data);
     BODY_WS.refBodyH = data.ref_body_h;
-    if (data.asset) {
-      if (isPortrait) {
-        state.portraitAssets[slot.id] = data.asset;
-      } else if (state.assets) {
-        state.assets[slot.id] = data.asset;
-        mediaNonce[nonceKey(slot.id, BODY_WS.heroId)] = String(Date.now());
-      }
-    }
+    // Do not replace board assets here. Opening the workspace may rewrite
+    // cells.json for review; clobbering state.assets made 套图播放 use 1/n
+    // cell fractions against a single frame and squash the preview.
     // 入库图已是最终像素：打开时一律从 100% / 脚位 0 / 原顺序起看
     BODY_WS.order = (data.frames || []).map((_, i) => i);
     BODY_WS.mirrors = (data.frames || []).map(() => false);
@@ -5717,6 +5805,20 @@ async function saveBodyScaleSlot() {
 async function confirmLeaveBodyScaleSlot() {
   if (!BODY_WS.dirty) return true;
   return confirm("当前套图有未保存的尺寸/脚位/序列（含复用与缓冲）微调，确定切换并丢弃这些预览调整？");
+}
+
+async function closeBodyScaleWorkspace() {
+  const dlg = $("bodyScaleDlg");
+  if (!dlg?.open || BODY_WS.busy) return;
+  if (BODY_WS.dirty) {
+    const saveNow = confirm(
+      "当前预览调整尚未写回草稿。确定将立即保存本套；取消则留在工作区继续编辑。"
+    );
+    if (!saveNow) return;
+    await saveBodyScaleSlot();
+    if (BODY_WS.dirty) return;
+  }
+  dlg.close();
 }
 
 async function unifyHeroBodyScale() {
@@ -6733,6 +6835,19 @@ document.addEventListener("click", (ev) => {
     generatePortraitSlot(portraitGen.getAttribute("data-portrait-gen"));
     return;
   }
+  const portraitLock = ev.target.closest("[data-portrait-lock-turnaround]");
+  if (portraitLock) {
+    lockPortraitTurnaround();
+    return;
+  }
+  const portraitCandidate = ev.target.closest("[data-portrait-candidate]");
+  if (portraitCandidate) {
+    adoptPortraitCandidate(
+      portraitCandidate.getAttribute("data-portrait-candidate"),
+      Number(portraitCandidate.getAttribute("data-candidate-index"))
+    );
+    return;
+  }
   const portraitReprompt = ev.target.closest("[data-portrait-reprompt]");
   if (portraitReprompt) {
     inferPortraitSlotPrompt(portraitReprompt.getAttribute("data-portrait-reprompt"));
@@ -6878,6 +6993,22 @@ document.addEventListener("input", (ev) => {
     schedulePortraitSave();
     return;
   }
+  const portraitBlueprint = ev.target.closest("[data-portrait-blueprint]");
+  if (portraitBlueprint && state.portrait) {
+    const sid = portraitBlueprint.getAttribute("data-portrait-blueprint");
+    const field = portraitBlueprint.getAttribute("data-blueprint-field");
+    if (sid && field) {
+      state.portrait.motion_blueprints = state.portrait.motion_blueprints || {};
+      const prior = state.portrait.motion_blueprints[sid] || {};
+      state.portrait.motion_blueprints[sid] = {
+        ...prior,
+        [field]: field === "loop" ? Boolean(portraitBlueprint.checked) : portraitBlueprint.value,
+      };
+      portraitDirty.blueprints.add(sid);
+      schedulePortraitSave();
+    }
+    return;
+  }
   if (promptEl && state.bible && promptEl.getAttribute("data-prompt") !== "stage") {
     const slotId = promptEl.getAttribute("data-prompt");
     state.bible.prompt_times = state.bible.prompt_times || {};
@@ -6999,7 +7130,7 @@ $("unifyBodyBtn")?.addEventListener("click", unifyHeroBodyScale);
 $("bodyChartBtn")?.addEventListener("click", openBodyScaleWorkspace);
 $("portraitUnifyBodyBtn")?.addEventListener("click", unifyPortraitBodyScale);
 $("portraitBodyScaleBtn")?.addEventListener("click", openPortraitBodyScaleWorkspace);
-$("bodyScaleClose")?.addEventListener("click", () => $("bodyScaleDlg")?.close());
+$("bodyScaleClose")?.addEventListener("click", () => closeBodyScaleWorkspace());
 $("bodyScalePrev")?.addEventListener("click", async () => {
   if (!(await confirmLeaveBodyScaleSlot())) return;
   loadBodyScaleSlot(BODY_WS.index - 1);
@@ -7282,6 +7413,12 @@ $("bodyScaleDlg")?.addEventListener("close", () => {
   BODY_WS.mirrors = [];
   BODY_WS.buffer = [];
   BODY_WS.selectedSet = new Set([0]);
+});
+$("bodyScaleDlg")?.addEventListener("cancel", (ev) => {
+  // Escape must not silently discard a timeline that exists only in preview.
+  if (!BODY_WS.dirty) return;
+  ev.preventDefault();
+  closeBodyScaleWorkspace();
 });
 $("bodyScaleFps")?.addEventListener("change", () => {
   if (bodyWsFrameCount()) armBodyScalePlay();
