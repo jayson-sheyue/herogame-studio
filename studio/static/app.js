@@ -365,7 +365,7 @@ async function api(path, opts = {}) {
       if (typeof data.message === "string") msg = data.message;
       else if (typeof data.error === "string") msg = data.error;
     }
-    if (!msg || msg === "{}") msg = res.statusText || `请求失败（${res.status}）`;
+    if (!msg || msg === "{}") msg = res.statusText || t("请求失败（{status}）", { status: res.status });
     throw new Error(msg);
   }
   return data;
@@ -765,7 +765,7 @@ function refreshActionLocks() {
     genAll.disabled = JOBS.batches.has(hid) || !frozen || !bible || !taOk || pending.length === 0;
     const rest = state.heroSlots.filter((s) => s.id !== "turnaround").length;
     genAll.textContent = pending.length && pending.length < rest
-      ? `继续生成剩余 ${pending.length} 张`
+      ? t("继续生成剩余 {n} 张", { n: pending.length })
       : t("一键生成其余套图");
   }
   const unifyBtn = $("unifyBodyBtn");
@@ -825,7 +825,7 @@ function applyWorkspace(data = {}) {
   const now = $("projectNow");
   const rawLabel =
     ws.line_label ||
-    (state.line === "deskpet" ? "桌宠/立绘" : state.line === "herogame" ? "对战游戏" : "");
+    (state.line === "deskpet" ? t("桌宠/立绘") : state.line === "herogame" ? t("对战游戏") : "");
   const label = rawLabel ? t(rawLabel) : "";
   if (now) {
     now.textContent = ws.root
@@ -994,7 +994,7 @@ function renderProjectRecent() {
   const box = $("projectRecent");
   if (!box) return;
   if (!state.projects.length) {
-    box.innerHTML = `<p class="tiny">还没有登记过其他工程。</p>`;
+    box.innerHTML = `<p class="tiny">${t("还没有登记过其他工程。")}</p>`;
     return;
   }
   box.innerHTML = state.projects
@@ -1013,7 +1013,10 @@ function renderProjectRecent() {
 function openProjectSwitcher() {
   renderProjectRecent();
   if ($("projectDlgNow") && state.workspace?.root) {
-    $("projectDlgNow").textContent = `当前：${state.workspace.name || t("未命名")} · ${state.workspace.root}`;
+    $("projectDlgNow").textContent = t("当前：{name} · {path}", {
+      name: state.workspace.name || t("未命名"),
+      path: state.workspace.root,
+    });
   }
   $("projectDlg")?.showModal();
   if ($("projectAlias")) $("projectAlias").value = state.workspace?.name || "";
@@ -1063,8 +1066,10 @@ async function applyProjectSwitch(data) {
   await afterProjectReady(data);
   setStatus(
     data.created
-      ? `已新建工程「${state.workspace?.name || state.workspace?.root}」。之后的草稿和导出都写进这个文件夹。`
-      : `已切换到工程「${state.workspace?.name || state.workspace?.root}」。`,
+      ? t("已新建工程「{name}」。之后的草稿和导出都写进这个文件夹。", {
+          name: state.workspace?.name || state.workspace?.root,
+        })
+      : t("已切换到工程「{name}」。", { name: state.workspace?.name || state.workspace?.root }),
     "ok"
   );
   closeProjectSwitcher();
@@ -1098,7 +1103,7 @@ async function browseProjectFolder(prompt) {
   const data = await api("/api/projects/browse", {
     method: "POST",
     body: JSON.stringify({
-      prompt: prompt || `选择${label}文件夹`,
+      prompt: prompt || t("选择{label}文件夹", { label }),
       default: parentFolder(state.workspace?.root),
     }),
   });
@@ -1118,7 +1123,7 @@ async function useProjectFolder(folder, { fromGate = false } = {}) {
     let path = typeof folder === "string" ? folder.trim() : "";
     if (!path) {
       path = await browseProjectFolder(
-        `选择${label}文件夹。新建请先建空文件夹；别名可填写，不填则用文件夹名。`
+        t("选择{label}文件夹。新建请先建空文件夹；别名可填写，不填则用文件夹名。", { label })
       );
       if (!path) return;
     }
@@ -1136,8 +1141,8 @@ async function useProjectFolder(folder, { fromGate = false } = {}) {
     await runJob({
       buttons: ["projectSwitchBtn", "projectUseBtn", "projectGateBrowseBtn"],
       label: t("正在切换…"),
-      task: `打开${label}`,
-      status: `正在打开 ${path} …`,
+      task: t("打开{label}", { label }),
+      status: t("正在打开 {path} …", { path }),
       fn: async () => {
         const data = await api("/api/projects/use", {
           method: "POST",
@@ -1163,7 +1168,7 @@ async function wipeProject(folder) {
     return;
   }
   const ok = window.confirm(
-    `清空「${name}」里的游戏资产？\n\n会删除该文件夹下的 assets/ 和 herogame.json（草稿、入库图、英雄都会没）。文件夹本身会留下。`
+t("清空「{name}」里的游戏资产？\n\n会删除该文件夹下的 assets/ 和 herogame.json（草稿、入库图、英雄都会没）。文件夹本身会留下。", { name })
   );
   if (!ok) return;
   persistVertex();
@@ -1171,8 +1176,8 @@ async function wipeProject(folder) {
     await runJob({
       buttons: ["projectSwitchBtn", "projectUseBtn"],
       label: t("正在清空…"),
-      task: `清空工程「${name}」`,
-      status: `正在清空 ${name} 的游戏资产…`,
+      task: t("清空工程「{name}」", { name }),
+      status: t("正在清空 {name} 的游戏资产…", { name }),
       fn: async () => {
         const data = await api("/api/projects/wipe", {
           method: "POST",
@@ -1200,7 +1205,7 @@ async function saveProjectAlias() {
       buttons: ["projectRenameBtn"],
       label: t("正在保存…"),
       task: t("保存工程别名"),
-      status: `正在把别名改为「${name}」…`,
+      status: t("正在把别名改为「{name}」…", { name }),
       fn: async () => {
         const data = await api("/api/projects/rename", {
           method: "POST",
@@ -1217,9 +1222,9 @@ async function saveProjectAlias() {
 
 function fillStageSelects() {
   const refOpts =
-    `<option value="">不参考（第一张图建议空）</option>` +
+    `<option value="">${t("不参考（第一张图建议空）")}</option>` +
     state.stages
-      .map((s) => `<option value="${s.stage_id}">${s.display_name}</option>`)
+      .map((s) => `<option value="${s.stage_id}">${escapeHtml(s.display_name || s.stage_id)}</option>`)
       .join("");
   const ref = $("stageRef")?.value;
   if ($("stageRef")) {
@@ -1312,10 +1317,10 @@ function formatPromptAge(ts) {
   if (!Number.isFinite(ms)) return "";
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   if (s < 8) return t("刚刚已更新");
-  if (s < 60) return `${s}秒前已更新`;
-  if (s < 3600) return `${Math.floor(s / 60)}分钟前已更新`;
-  if (s < 86400) return `${Math.floor(s / 3600)}小时前已更新`;
-  return `${Math.floor(s / 86400)}天前已更新`;
+  if (s < 60) return t("{s}秒前已更新", { s });
+  if (s < 3600) return t("{m}分钟前已更新", { m: Math.floor(s / 60) });
+  if (s < 86400) return t("{h}小时前已更新", { h: Math.floor(s / 3600) });
+  return t("{d}天前已更新", { d: Math.floor(s / 86400) });
 }
 
 function refreshPromptAges() {
@@ -1334,7 +1339,7 @@ function promptZhBlock(slotId) {
   const zh = (state.bible.prompts_zh || {})[slotId] || "";
   if (!note && !zh) return "";
   const bits = [];
-  if (note) bits.push(`<b>已吸收你的意见：</b>${escapeHtml(note)}`);
+  if (note) bits.push(`<b>${t("已吸收你的意见：")}</b>${escapeHtml(note)}`);
   if (zh) bits.push(escapeHtml(zh));
   return `<div class="prompt-zh">${bits.join("<br/>")}</div>`;
 }
@@ -1416,20 +1421,30 @@ function fxSubjectsFromBoard() {
   return out;
 }
 
+function slotChromeTitle(slot) {
+  const title = slot?.title || slot?.id || "";
+  return title && /[\u4e00-\u9fff]/.test(String(title)) ? t(String(title)) : String(title);
+}
+
+function slotChromeHint(slot) {
+  const hint = slot?.hint || "";
+  return hint ? t(hint) : "";
+}
+
 function cardHtml(slot, prompt, asset, downloadName, kind = "hero") {
   const isFx = kind === "hero" && String(slot.id).startsWith("fx_");
   const fxSubject = isFx ? fxSubjectForSlot(slot.id) : "projectile";
   const fxSubjectNote = isFx && fxSubject === "figure"
-    ? `<p class="strip-note is-info">含人物模式：会附三视图参考，画英雄本人完成体术/骑乘/冲锋类特效。</p>`
+    ? `<p class="strip-note is-info">${t("含人物模式：会附三视图参考，画英雄本人完成体术/骑乘/冲锋类特效。")}</p>`
     : isFx && fxSubject === "clone"
-      ? `<p class="strip-note is-info">分身/残影模式：会附三视图参考，画同一英雄的重影或分身。</p>`
+      ? `<p class="strip-note is-info">${t("分身/残影模式：会附三视图参考，画同一英雄的重影或分身。")}</p>`
       : "";
   const fxSubjectCtl = isFx
-    ? `<label class="fx-subject" title="纯弹道只画飞行物；含人物用于体术/骑乘冲锋；分身/残影用于重影类技能">特效主体
+    ? `<label class="fx-subject" title="${escapeHtml(t("纯弹道只画飞行物；含人物用于体术/骑乘冲锋；分身/残影用于重影类技能"))}">${t("特效主体")}
         <select data-fx-subject="${slot.id}">
-          <option value="projectile" ${fxSubject === "projectile" ? "selected" : ""}>纯弹道/特效</option>
-          <option value="figure" ${fxSubject === "figure" ? "selected" : ""}>含人物（体术/骑乘）</option>
-          <option value="clone" ${fxSubject === "clone" ? "selected" : ""}>分身/残影</option>
+          <option value="projectile" ${fxSubject === "projectile" ? "selected" : ""}>${t("纯弹道/特效")}</option>
+          <option value="figure" ${fxSubject === "figure" ? "selected" : ""}>${t("含人物（体术/骑乘）")}</option>
+          <option value="clone" ${fxSubject === "clone" ? "selected" : ""}>${t("分身/残影")}</option>
         </select>
       </label>`
     : "";
@@ -1458,56 +1473,66 @@ function cardHtml(slot, prompt, asset, downloadName, kind = "hero") {
   const isFall = FALL_SLOTS.has(slot.id);
   const isGrid2x2 = !isFall && (asset?.grid === "2x2" || (Number(asset?.rows || 1) === 2 && Number(asset?.detected || 0) === 4));
   const badge = committed && splitPending
-    ? `<span class="badge in">已入库</span><span class="badge draft">新切法未写入</span>`
+    ? `<span class="badge in">${t("已入库")}</span><span class="badge draft">${t("新切法未写入")}</span>`
     : draft && committed
-      ? `<span class="badge in">已入库</span><span class="badge draft">原图可再切</span>`
+      ? `<span class="badge in">${t("已入库")}</span><span class="badge draft">${t("原图可再切")}</span>`
       : draft
-        ? `<span class="badge draft">草稿</span>`
+        ? `<span class="badge draft">${t("草稿")}</span>`
         : committed
-          ? `<span class="badge in">已入库</span>`
+          ? `<span class="badge in">${t("已入库")}</span>`
           : "";
   const playing = playback.slotId === slot.id && playback.timer;
   const age = kind === "hero" ? formatPromptAge(state.bible?.prompt_times?.[slot.id]) : "";
+  const displayTitle = slotChromeTitle(slot);
   const thumbInner = showFrames
-    ? frames.map((f, i) => `<button type="button" class="split-preview" data-preview-src="${f.url}"><b>${i + 1}</b><img src="${f.url}" alt="帧 ${i + 1}" loading="lazy" decoding="async" /></button>`).join("")
-    : `${url ? `<img src="${url}" alt="${slot.title}" loading="lazy" decoding="async" />` : `<span class="ph">尚未生成</span>`}
+    ? frames.map((f, i) => `<button type="button" class="split-preview" data-preview-src="${f.url}"><b>${i + 1}</b><img src="${f.url}" alt="${escapeHtml(t("帧 {n}", { n: i + 1 }))}" loading="lazy" decoding="async" /></button>`).join("")
+    : `${url ? `<img src="${url}" alt="${escapeHtml(displayTitle)}" loading="lazy" decoding="async" />` : `<span class="ph">${t("尚未生成")}</span>`}
         ${showGuides ? `<div class="split-guides${FALL_SLOTS.has(slot.id) ? " is-contour" : ""}" data-guides="${slot.id}" hidden>${guideCells.map((c, i) => `<span class="split-cell" style="left:${(c.x || 0) * 100}%;top:${(c.y || 0) * 100}%;width:${(c.w || 0) * 100}%;height:${(c.h || 1) * 100}%"><b>${i + 1}</b></span>`).join("")}</div>` : ""}`;
   const splitFramesCtl = flexible
     ? isFall
-      ? `<label class="split-frames" title="倒地新图默认 4 帧单行横条。旧的 5 帧图选 5。不要用奥义那种 2×2 田字格。">切
+      ? `<label class="split-frames" title="${escapeHtml(t("倒地新图默认 4 帧单行横条。旧的 5 帧图选 5。不要用奥义那种 2×2 田字格。"))}">${t("切")}
         <select data-split-frames="${slot.id}">
-          <option value="4" ${frameCount === 4 ? "selected" : ""}>4 帧（单行横条）</option>
-          <option value="5" ${frameCount === 5 ? "selected" : ""}>5 帧（旧图）</option>
-          <option value="6" ${frameCount === 6 ? "selected" : ""}>6 帧（旧图）</option>
+          <option value="4" ${frameCount === 4 ? "selected" : ""}>${t("4 帧（单行横条）")}</option>
+          <option value="5" ${frameCount === 5 ? "selected" : ""}>${t("5 帧（旧图）")}</option>
+          <option value="6" ${frameCount === 6 ? "selected" : ""}>${t("6 帧（旧图）")}</option>
         </select>
       </label>`
-      : `<label class="split-frames" title="新图默认 5 帧。旧图若仍是 6 人选 6；误生成的 2×2 宫格选 4。">切
+      : `<label class="split-frames" title="${escapeHtml(t("新图默认 5 帧。旧图若仍是 6 人选 6；误生成的 2×2 宫格选 4。"))}">${t("切")}
         <select data-split-frames="${slot.id}">
-          <option value="4" ${frameCount === 4 ? "selected" : ""}>4 帧（2×2 宫格）</option>
-          <option value="5" ${frameCount === 5 ? "selected" : ""}>5 帧</option>
-          <option value="6" ${frameCount === 6 ? "selected" : ""}>6 帧（旧图）</option>
+          <option value="4" ${frameCount === 4 ? "selected" : ""}>${t("4 帧（2×2 宫格）")}</option>
+          <option value="5" ${frameCount === 5 ? "selected" : ""}>${t("5 帧")}</option>
+          <option value="6" ${frameCount === 6 ? "selected" : ""}>${t("6 帧（旧图）")}</option>
         </select>
       </label>`
     : "";
+  const splitLabel = frames.length
+    ? t("重新切分（换一种切法）")
+    : t("一键切分（{n} 帧）", { n: frameCount });
   return `
     <article class="card ${draft ? "is-draft" : committed ? "is-in" : ""} ${canStrip ? "has-strip" : ""} ${playing ? "is-playing" : ""}" data-slot="${slot.id}">
       <header>
         <div>
-          <b>${slot.title}${badge}</b>
-          <div><small>${slot.hint}</small></div>
+          <b>${escapeHtml(displayTitle)}${badge}</b>
+          <div><small>${escapeHtml(slotChromeHint(slot))}</small></div>
         </div>
-        <small>${slot.aspect} · ${slot.size}${canStrip ? ` · ${frameCount} 帧` : ""}</small>
+        <small>${escapeHtml(slot.aspect || "")} · ${escapeHtml(slot.size || "")}${canStrip ? t("· {n} 帧", { n: frameCount }) : ""}</small>
       </header>
       <div class="thumb ${showFrames ? "is-frames" : ""}" ${showFrames ? "" : `data-preview="${slot.id}"`}>
         ${thumbInner}
       </div>
-      ${canStrip && frames.length ? `<div class="play-bay" data-play-bay="${slot.id}"><img class="play-stage" alt="帧动画" /><span class="ph">点播放：同一位置循环 ${frames.length || frameCount} 帧</span></div>` : ""}
-      ${showGuides && isFall ? `<p class="strip-note is-info">倒地新图默认 4 帧单行横条（比 5 帧每格更宽），不是奥义那种 2×2 田字格。黄线只是等宽参考；请先「一键切分」按轮廓装箱。旧的 5 帧图可在旁边改选 5。</p>` : ""}
-      ${isGrid2x2 && !showFrames ? `<p class="strip-note is-info">检出 2×2 宫格。选「4 帧（2×2 宫格）」再切，会展开成单行四幕，不必重出图。</p>` : ""}
-      ${layoutOff && !isGrid2x2 ? `<p class="strip-note">检出 ${asset.detected} 格 / ${asset.rows || 1} 行，当前按 ${frameCount} 帧切。框已按人物对齐；可改旁边「4/5/6 帧」再切，或重出图。</p>` : ""}
-      ${canStrip && asset?.frames_stale ? `<p class="strip-note">套图已更新，请重新切分再播放。</p>` : ""}
-      ${splitPending ? `<p class="strip-note is-info">当前切法「${escapeHtml(asset.split_label || t("按人物轮廓装箱"))}」（${(Number(asset.split_variant) || 0) + 1}/${asset.split_count || 5} · ${frames.length || frameCount} 帧）还只是预览，游戏里仍是旧版。满意点「${committed ? t("覆盖入库") : t("采用入库")}」写入；不满意点「重新切分」换切法，不必重新生图。</p>` : ""}
-      ${canStrip && showFrames && committed && !splitPending ? `<p class="strip-note is-info">当前切法已写入游戏。若要换格子，点「重新切分」再覆盖入库。</p>` : ""}
+      ${canStrip && frames.length ? `<div class="play-bay" data-play-bay="${slot.id}"><img class="play-stage" alt="${escapeHtml(t("帧动画"))}" /><span class="ph">${t("点播放：同一位置循环 {n} 帧", { n: frames.length || frameCount })}</span></div>` : ""}
+      ${showGuides && isFall ? `<p class="strip-note is-info">${t("倒地新图默认 4 帧单行横条（比 5 帧每格更宽），不是奥义那种 2×2 田字格。黄线只是等宽参考；请先「一键切分」按轮廓装箱。旧的 5 帧图可在旁边改选 5。")}</p>` : ""}
+      ${isGrid2x2 && !showFrames ? `<p class="strip-note is-info">${t("检出 2×2 宫格。选「4 帧（2×2 宫格）」再切，会展开成单行四幕，不必重出图。")}</p>` : ""}
+      ${layoutOff && !isGrid2x2 ? `<p class="strip-note">${t("检出 {detected} 格 / {rows} 行，当前按 {frames} 帧切。框已按人物对齐；可改旁边「4/5/6 帧」再切，或重出图。", { detected: asset.detected, rows: asset.rows || 1, frames: frameCount })}</p>` : ""}
+      ${canStrip && asset?.frames_stale ? `<p class="strip-note">${t("套图已更新，请重新切分再播放。")}</p>` : ""}
+      ${splitPending ? `<p class="strip-note is-info">${t("当前切法「{label}」（{variant}/{count} · {frames} 帧）还只是预览，游戏里仍是旧版。满意点「{commit}」写入；不满意点「重新切分」换切法，不必重新生图。", {
+        label: asset.split_label || t("按人物轮廓装箱"),
+        variant: (Number(asset.split_variant) || 0) + 1,
+        count: asset.split_count || 5,
+        frames: frames.length || frameCount,
+        commit: committed ? t("覆盖入库") : t("采用入库"),
+      })}</p>` : ""}
+      ${canStrip && showFrames && committed && !splitPending ? `<p class="strip-note is-info">${t("当前切法已写入游戏。若要换格子，点「重新切分」再覆盖入库。")}</p>` : ""}
       ${fxSubjectNote}
       <div class="prompt-box">
         <span class="prompt-age" data-prompt-age="${slot.id}" ${age ? "" : "hidden"}>${age}</span>
@@ -1517,18 +1542,18 @@ function cardHtml(slot, prompt, asset, downloadName, kind = "hero") {
       <div class="row">
         ${fxSubjectCtl}
         ${frozenStyle
-          ? `<p class="tiny">风格已定调，不可再出图或撤回。</p>`
+          ? `<p class="tiny">${t("风格已定调，不可再出图或撤回。")}</p>`
           : `<button data-gen="${slot.id}">${committed ? t("再出一版草稿") : t("生成草稿")}</button>
         ${canCommit ? `<button class="primary" data-commit="${slot.id}" data-kind="${kind}">${committed ? t("覆盖入库") : t("采用入库")}</button>` : ""}
         ${draft ? `<button data-discard="${slot.id}" data-kind="${kind}">${committed ? t("丢掉这版草稿") : t("丢弃草稿")}</button>` : ""}
-        ${kind === "hero" && state.bible ? `<button data-reprompt="${slot.id}">重写提示词</button>` : ""}
-        ${committed && kind === "hero" && slot.kind !== "cg" ? `<button data-rekey="${slot.id}" data-kind="${kind}" title="只对已入库的游戏 PNG 再抠一次青边。不重新切分，也不用先有草稿。">重新去青覆盖</button>` : ""}
-        ${committed && kind !== "style" ? `<button class="danger" data-uncommit="${slot.id}" data-kind="${kind}">撤回入库</button>` : ""}`}
-        ${canStrip ? `${splitFramesCtl}<button data-split="${slot.id}" title="从原图切开，不重新生图。再点会换下一种切法。">${frames.length ? t("重新切分（换一种切法）") : `一键切分（${frameCount} 帧）`}</button>` : ""}
+        ${kind === "hero" && state.bible ? `<button data-reprompt="${slot.id}">${t("重写提示词")}</button>` : ""}
+        ${committed && kind === "hero" && slot.kind !== "cg" ? `<button data-rekey="${slot.id}" data-kind="${kind}" title="${escapeHtml(t("只对已入库的游戏 PNG 再抠一次青边。不重新切分，也不用先有草稿。"))}">${t("重新去青覆盖")}</button>` : ""}
+        ${committed && kind !== "style" ? `<button class="danger" data-uncommit="${slot.id}" data-kind="${kind}">${t("撤回入库")}</button>` : ""}`}
+        ${canStrip ? `${splitFramesCtl}<button data-split="${slot.id}" title="${escapeHtml(t("从原图切开，不重新生图。再点会换下一种切法。"))}">${splitLabel}</button>` : ""}
         ${canStrip ? `<button data-play="${slot.id}">${playing ? t("停止") : t("播放")}</button>` : ""}
-        ${url ? `<a class="dl" href="${url}" download="${downloadName}">下载</a>` : ""}
+        ${url ? `<a class="dl" href="${url}" download="${downloadName}">${t("下载")}</a>` : ""}
       </div>
-      ${canStrip ? `<div class="fps-row"><label>播放帧率 <input type="range" min="4" max="16" value="${playback.slotId === slot.id ? playback.fps : 8}" data-fps="${slot.id}" /><span data-fps-val="${slot.id}">${playback.slotId === slot.id ? playback.fps : 8}</span> fps</label></div>` : ""}
+      ${canStrip ? `<div class="fps-row"><label>${t("播放帧率")} <input type="range" min="4" max="16" value="${playback.slotId === slot.id ? playback.fps : 8}" data-fps="${slot.id}" /><span data-fps-val="${slot.id}">${playback.slotId === slot.id ? playback.fps : 8}</span> fps</label></div>` : ""}
     </article>
   `;
 }
@@ -1537,8 +1562,12 @@ function selectIconCardHtml(asset) {
   const url = bustUrl(asset?.url || "", "select_icon");
   const committed = Boolean(asset?.committed);
   const heroId = state.bible?.hero_id || "hero";
-  const source = asset?.source ? `裁自 ${asset.source === "turnaround" ? t("三视图") : asset.source}` : "";
-  const stamp = asset?.committed_at ? `更新 ${asset.committed_at.replace("T", " ")}` : "";
+  const source = asset?.source
+    ? t("裁自 {src}", { src: asset.source === "turnaround" ? t("三视图") : asset.source })
+    : "";
+  const stamp = asset?.committed_at
+    ? t("更新 {when}", { when: asset.committed_at.replace("T", " ") })
+    : "";
   const meta = [source, stamp, asset?.width && asset?.height ? `${asset.width}×${asset.height}` : ""]
     .filter(Boolean)
     .join(" · ");
@@ -1547,20 +1576,20 @@ function selectIconCardHtml(asset) {
     <article class="card is-derived ${committed ? "is-in" : ""}" data-slot="select_icon">
       <header>
         <div>
-          <b>选人头像 select.png${committed ? `<span class="badge in">已生成</span>` : `<span class="badge draft">待生成</span>`}</b>
-          <div><small>游戏选人条用的 128×128 正脸大头像；入库三视图或 idle 时自动烘焙，不进草稿区。</small></div>
+          <b>${t("选人头像 select.png")}${committed ? `<span class="badge in">${t("已生成")}</span>` : `<span class="badge draft">${t("待生成")}</span>`}</b>
+          <div><small>${t("游戏选人条用的 128×128 正脸大头像；入库三视图或 idle 时自动烘焙，不进草稿区。")}</small></div>
         </div>
         <small>1:1 · 128px${meta ? ` · ${escapeHtml(meta)}` : ""}</small>
       </header>
       <div class="thumb is-square">
-        ${url ? `<img src="${url}" alt="选人头像" loading="lazy" decoding="async" />` : `<span class="ph">${canBake ? t("点「重新烘焙」生成") : t("需先入库三视图或 idle")}</span>`}
+        ${url ? `<img src="${url}" alt="${escapeHtml(t("选人头像"))}" loading="lazy" decoding="async" />` : `<span class="ph">${canBake ? t("点「重新烘焙」生成") : t("需先入库三视图或 idle")}</span>`}
       </div>
-      <p class="strip-note is-info">文件在 <code>assets/game/heroes/${escapeHtml(heroId)}/select.png</code>。可「手动裁剪」像微信头像一样框选正脸，或「重新烘焙」走自动找脸。</p>
+      <p class="strip-note is-info">${t("文件在 <code>assets/game/heroes/{id}/select.png</code>。可「手动裁剪」像微信头像一样框选正脸，或「重新烘焙」走自动找脸。", { id: escapeHtml(heroId) })}</p>
       <div class="row">
-        <button type="button" class="primary" data-crop-select ${canBake ? "" : "disabled"} title="打开裁剪框，自行框选正脸写入 select.png">手动裁剪</button>
-        <button type="button" data-bake-select ${canBake ? "" : "disabled"} title="从三视图（优先）或 idle 第 0 帧自动裁脸并重写 select.png">重新烘焙</button>
-        <button type="button" data-reveal-select title="在 Finder 中打开 select.png 或英雄目录">打开文件</button>
-        ${url ? `<a class="dl" href="${url}" download="${heroId}_select.png">下载</a>` : ""}
+        <button type="button" class="primary" data-crop-select ${canBake ? "" : "disabled"} title="${escapeHtml(t("打开裁剪框，自行框选正脸写入 select.png"))}">${t("手动裁剪")}</button>
+        <button type="button" data-bake-select ${canBake ? "" : "disabled"} title="${escapeHtml(t("从三视图（优先）或 idle 第 0 帧自动裁脸并重写 select.png"))}">${t("重新烘焙")}</button>
+        <button type="button" data-reveal-select title="${escapeHtml(t("在 Finder 中打开 select.png 或英雄目录"))}">${t("打开文件")}</button>
+        ${url ? `<a class="dl" href="${url}" download="${heroId}_select.png">${t("下载")}</a>` : ""}
       </div>
     </article>
   `;
@@ -1835,54 +1864,33 @@ function collisionEditorHtml() {
     ? rows
         .map((row) => {
           const on = sel && sel.kind === row.kind && sel.i === row.i;
-          return `<li class="${on ? "on" : ""}"><button type="button" class="col-pick" data-col-pick="${row.kind}:${row.i}"><b>${row.label}</b> ${Math.round(row.r.x * 100)}–${Math.round((row.r.x + row.r.w) * 100)}%　高 ${Math.round(row.r.y * 100)}%</button><button type="button" data-col-del="${row.kind}:${row.i}">${t("删")}</button></li>`;
+          return t("<li class=\"{on}\"><button type=\"button\" class=\"col-pick\" data-col-pick=\"{where}:{i}\"><b>{label}</b> {x}–{w}%　高 {y}%</button><button type=\"button\" data-col-del=\"{where2}:{i2}\">删</button></li>", {
+            on: on ? "on" : "",
+            where: row.kind,
+            i: row.i,
+            label: row.label,
+            x: Math.round(row.r.x * 100),
+            w: Math.round((row.r.x + row.r.w) * 100),
+            y: Math.round(row.r.y * 100),
+            where2: row.kind,
+            i2: row.i,
+          });
         })
         .join("")
     : t("<li class='empty'>还没有矩形。默认开战仍是通铺地面。</li>");
   const src = state.stageAsset?.url || "";
   const zoomPct = Math.round((state.colZoom || 1) * 100);
-  return `<section class="collision-editor">
-    <h3>对齐碰撞（画面里已经画好的台阶 / 壕沟）</h3>
-    <p class="tiny">对局里不再画色块。绿=整块实心（英雄进不去，移动/受击都挡），蓝=单向高台（只能站顶面）。崖壁/墙体请用绿色画满要挡住的区域。<b>保存不会自动挪动矩形</b>。<b>⌘/Ctrl + 滚轮</b> 或 ± 放大。</p>
-    <div class="col-tools">
-      <button type="button" data-col-tool="floors" class="${state.colTool === "floors" ? "on" : ""}">地面</button>
-      <button type="button" data-col-tool="platforms" class="${state.colTool === "platforms" ? "on" : ""}">高台</button>
-      <button type="button" data-col-reset>通铺地面</button>
-      <button type="button" data-col-del-sel ${sel ? "" : "disabled"}>删除选中</button>
-      <span class="col-zoom-tools">
-        <button type="button" data-col-zoom-out title="缩小">−</button>
-        <span data-col-zoom-label>${zoomPct}%</span>
-        <button type="button" data-col-zoom-in title="放大">+</button>
-        <button type="button" data-col-zoom-fit title="适应宽度">适应</button>
-      </span>
-      <button type="button" class="primary" data-col-save>保存碰撞</button>
-    </div>
-    <div class="col-editor-grid">
-    <div class="col-viewport" id="colViewport">
-      <div class="col-stage-wrap" id="colStageWrap">
-        <div class="col-ruler-row">
-          <div class="col-ruler-corner"></div>
-          <canvas class="col-ruler-x" id="colRulerTop" height="20"></canvas>
-          <div class="col-ruler-corner"></div>
-        </div>
-        <div class="col-ruler-row col-ruler-mid">
-          <canvas class="col-ruler-y" id="colRulerLeft" width="28"></canvas>
-          <div class="col-stage" id="colStage">
-            ${src ? `<img id="colSrc" alt="" src="${src}" draggable="false" />` : `<span class="ph">先出图再标碰撞</span>`}
-            <canvas id="colCanvas"></canvas>
-          </div>
-          <canvas class="col-ruler-y col-ruler-y-right" id="colRulerRight" width="28"></canvas>
-        </div>
-        <div class="col-ruler-row">
-          <div class="col-ruler-corner"></div>
-          <canvas class="col-ruler-x" id="colRulerBottom" height="20"></canvas>
-          <div class="col-ruler-corner"></div>
-        </div>
-      </div>
-    </div>
-    </div>
-    <ul class="col-list">${list}</ul>
-  </section>`;
+  const id = src
+    ? `<img id="colSrc" alt="" src="${src}" draggable="false" />`
+    : t("<span class=\"ph\">先出图再标碰撞</span>");
+  return t("<section class=\"collision-editor\">\n    <h3>对齐碰撞（画面里已经画好的台阶 / 壕沟）</h3>\n    <p class=\"tiny\">对局里不再画色块。绿=整块实心（英雄进不去，移动/受击都挡），蓝=单向高台（只能站顶面）。崖壁/墙体请用绿色画满要挡住的区域。<b>保存不会自动挪动矩形</b>。<b>⌘/Ctrl + 滚轮</b> 或 ± 放大。</p>\n    <div class=\"col-tools\">\n      <button type=\"button\" data-col-tool=\"floors\" class=\"{on}\">地面</button>\n      <button type=\"button\" data-col-tool=\"platforms\" class=\"{seconds}\">高台</button>\n      <button type=\"button\" data-col-reset>通铺地面</button>\n      <button type=\"button\" data-col-del-sel {disabled}>删除选中</button>\n      <span class=\"col-zoom-tools\">\n        <button type=\"button\" data-col-zoom-out title=\"缩小\">−</button>\n        <span data-col-zoom-label>{zoomPct}%</span>\n        <button type=\"button\" data-col-zoom-in title=\"放大\">+</button>\n        <button type=\"button\" data-col-zoom-fit title=\"适应宽度\">适应</button>\n      </span>\n      <button type=\"button\" class=\"primary\" data-col-save>保存碰撞</button>\n    </div>\n    <div class=\"col-editor-grid\">\n    <div class=\"col-viewport\" id=\"colViewport\">\n      <div class=\"col-stage-wrap\" id=\"colStageWrap\">\n        <div class=\"col-ruler-row\">\n          <div class=\"col-ruler-corner\"></div>\n          <canvas class=\"col-ruler-x\" id=\"colRulerTop\" height=\"20\"></canvas>\n          <div class=\"col-ruler-corner\"></div>\n        </div>\n        <div class=\"col-ruler-row col-ruler-mid\">\n          <canvas class=\"col-ruler-y\" id=\"colRulerLeft\" width=\"28\"></canvas>\n          <div class=\"col-stage\" id=\"colStage\">\n            {id}\n            <canvas id=\"colCanvas\"></canvas>\n          </div>\n          <canvas class=\"col-ruler-y col-ruler-y-right\" id=\"colRulerRight\" width=\"28\"></canvas>\n        </div>\n        <div class=\"col-ruler-row\">\n          <div class=\"col-ruler-corner\"></div>\n          <canvas class=\"col-ruler-x\" id=\"colRulerBottom\" height=\"20\"></canvas>\n          <div class=\"col-ruler-corner\"></div>\n        </div>\n      </div>\n    </div>\n    </div>\n    <ul class=\"col-list\">{list}</ul>\n  </section>", {
+    on: state.colTool === "floors" ? "on" : "",
+    seconds: state.colTool === "platforms" ? "on" : "",
+    disabled: sel ? "" : "disabled",
+    id,
+    list,
+    zoomPct,
+  });
 }
 
 function layoutCollisionStage() {
@@ -2067,7 +2075,17 @@ function refreshCollisionList() {
     ? rows
         .map((row) => {
           const on = sel && sel.kind === row.kind && sel.i === row.i;
-          return `<li class="${on ? "on" : ""}"><button type="button" class="col-pick" data-col-pick="${row.kind}:${row.i}"><b>${row.label}</b> ${Math.round(row.r.x * 100)}–${Math.round((row.r.x + row.r.w) * 100)}%　高 ${Math.round(row.r.y * 100)}%</button><button type="button" data-col-del="${row.kind}:${row.i}">${t("删")}</button></li>`;
+          return t("<li class=\"{on}\"><button type=\"button\" class=\"col-pick\" data-col-pick=\"{where}:{i}\"><b>{label}</b> {x}–{w}%　高 {y}%</button><button type=\"button\" data-col-del=\"{where2}:{i2}\">删</button></li>", {
+            on: on ? "on" : "",
+            where: row.kind,
+            i: row.i,
+            label: row.label,
+            x: Math.round(row.r.x * 100),
+            w: Math.round((row.r.x + row.r.w) * 100),
+            y: Math.round(row.r.y * 100),
+            where2: row.kind,
+            i2: row.i,
+          });
         })
         .join("")
     : t("<li class='empty'>还没有矩形。默认开战仍是通铺地面。</li>");
@@ -2206,9 +2224,9 @@ function renderBible() {
     $("bibleScene").after(voiceNote);
   }
   voiceNote.textContent = intro
-    ? `台词：${intro}${persona ? ` · ${persona}` : ""}`
+    ? t("台词：{intro}{persona}", { intro, persona: persona ? ` · ${persona}` : "" })
     : persona
-      ? `声线：${persona}`
+      ? t("声线：{persona}", { persona })
       : t("还没有台词。可在左侧「台词与配音」里写。");
   renderVoice();
 }
@@ -2298,7 +2316,7 @@ function renderVoice() {
         <div class="vl-fields">
           <textarea data-voice-line="${slot.id}" rows="2" placeholder="${slot.hint || ""}">${(line.text || "").replace(/</g, "&lt;")}</textarea>
           <input type="hidden" data-voice-tag="${slot.id}" value="${(line.tag || "").replace(/"/g, "&quot;")}" />
-          <input class="vl-emo" data-voice-emotion="${slot.id}" value="${(line.emotion || "").replace(/"/g, "&quot;")}" placeholder="情绪：怎么演，例如 先压后爆" />
+          <input class="vl-emo" data-voice-emotion="${slot.id}" value="${(line.emotion || "").replace(/"/g, "&quot;")}" placeholder="${escapeHtml(t("情绪：怎么演，例如 先压后爆"))}" />
         </div>
         <button type="button" class="vl-play${asset?.url ? " has-audio" : ""}" data-voice-play="${slot.id}">${badge}</button>
       </div>`;
@@ -2325,8 +2343,8 @@ async function loadTtsVoices() {
     const cloud = (data.voices || []).filter((v) => v.engine !== "gemini");
     const opt = (v) => `<option value="${v.name}" data-engine="${v.engine || "cloud"}">${v.label}</option>`;
     sel.innerHTML =
-      (gemini.length ? `<optgroup label="Gemini-TTS 能演戏（${gemini.length}）">${gemini.map(opt).join("")}</optgroup>` : "") +
-      (cloud.length ? `<optgroup label="Cloud 朗读">${cloud.map(opt).join("")}</optgroup>` : "");
+      (gemini.length ? t("<optgroup label=\"Gemini-TTS 能演戏（{count}）\">{join}</optgroup>", { count: gemini.length, join: gemini.map(opt).join("") }) : "") +
+      (cloud.length ? t("<optgroup label=\"Cloud 朗读\">{join}</optgroup>", { join: cloud.map(opt).join("") }) : "");
     if (data.models?.length && $("ttsModel")) {
       const model = $("ttsModel").value;
       $("ttsModel").innerHTML = data.models.map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
@@ -2371,12 +2389,12 @@ function fillVoiceLanguageOptions(query, preferred) {
   const matched = langs.filter((l) => langMatches(l, q));
   const list = q ? matched : langs;
   if (!list.length && q) {
-    sel.innerHTML = `<option value="" disabled>无匹配「${q.replace(/</g, "")}」</option>`;
+    sel.innerHTML = t("<option value=\"\" disabled>无匹配「{g}」</option>", { g: q.replace(/</g, "") });
     if (langs.some((l) => l.id === cur)) {
       const keep = langs.find((l) => l.id === cur);
       const opt = document.createElement("option");
       opt.value = keep.id;
-      opt.textContent = `当前：${keep.display || `${keep.label} · ${keep.id}`}`;
+      opt.textContent = t("当前：{label}", { label: keep.display || `${keep.label} · ${keep.id}` });
       if (keep.ok === false) opt.dataset.unsupported = "1";
       opt.selected = true;
       sel.appendChild(opt);
@@ -2394,7 +2412,7 @@ function fillVoiceLanguageOptions(query, preferred) {
       const keep = langs.find((l) => l.id === cur);
       const opt = document.createElement("option");
       opt.value = keep.id;
-      opt.textContent = `当前：${keep.display || `${keep.label} · ${keep.id}`}`;
+      opt.textContent = t("当前：{label}", { label: keep.display || `${keep.label} · ${keep.id}` });
       if (keep.ok === false) opt.dataset.unsupported = "1";
       sel.insertBefore(opt, sel.firstChild);
       sel.value = cur;
@@ -2420,16 +2438,16 @@ function updateVoiceLanguageHint(matchCount) {
     return;
   }
   if (typeof matchCount === "number") {
-    hint.textContent = `匹配 ${matchCount} / ${langs.length} 种。选「不可用」语种无法 Google 合成，请改用录音克隆或邻近语种。`;
+    hint.textContent = t("匹配 {matchCount} / {count} 种。选「不可用」语种无法 Google 合成，请改用录音克隆或邻近语种。", { matchCount, count: langs.length });
     return;
   }
   if (meta.cloud && !meta.gemini) {
-    hint.textContent = `「${meta.label || meta.id}」仅 Cloud 朗读支持；Gemini-TTS 会自动改用 Cloud 音色。`;
+    hint.textContent = t("「{label}」仅 Cloud 朗读支持；Gemini-TTS 会自动改用 Cloud 音色。", { label: meta.label || meta.id });
     return;
   }
   hint.textContent =
     langs.length
-      ? `共 ${langs.length} 种。可搜中文名 / 英文名 / 代码。高棉语 km-KH 目前 Google 不支持合成，请用录音克隆，或试 th-TH / vi-VN。`
+      ? t("共 {count} 种。可搜中文名 / 英文名 / 代码。高棉语 km-KH 目前 Google 不支持合成，请用录音克隆，或试 th-TH / vi-VN。", { count: langs.length })
       : t("上方可搜中文名、英文名或代码。");
 }
 
@@ -2466,7 +2484,7 @@ async function speakLine(lineId) {
   }
   const langMeta = currentTtsLanguageMeta();
   if (langMeta.ok === false) {
-    setStatus(langMeta.detail || `Google TTS 不支持「${langMeta.label || langMeta.id}」。请改用录音克隆或换语种。`, "bad");
+    setStatus(langMeta.detail || t("Google TTS 不支持「{label}」。请改用录音克隆或换语种。", { label: langMeta.label || langMeta.id }), "bad");
     updateVoiceLanguageHint();
     return;
   }
@@ -2475,7 +2493,7 @@ async function speakLine(lineId) {
     await runJob({
       buttons: ["voiceInferBtn", "voiceCommitBtn"],
       label: t("合成中…"),
-      status: `正在用 Google TTS 试听「${state.voiceLines.find((s) => s.id === lineId)?.title || lineId}」…`,
+      status: t("正在用 Google TTS 试听「{title}」…", { title: state.voiceLines.find((s) => s.id === lineId)?.title || lineId }),
       fn: async () => {
         const voice = voiceFromForm();
         const data = await api("/api/tts/speak", {
@@ -2722,7 +2740,7 @@ async function startCloneRecord(kind) {
     } catch (err) {
       cloneBlobs[kind] = raw;
       previewClone(kind, raw);
-      setStatus(`录音已保存，但转 wav 失败，将按原格式上传：${err.message || err}`, "bad");
+      setStatus(t("录音已保存，但转 wav 失败，将按原格式上传：{message}", { message: err.message || err }), "bad");
     }
     const startBtn = $(kind === "ref" ? "cloneRefRecBtn" : "cloneConsentRecBtn");
     const stopBtn = $(kind === "ref" ? "cloneRefStopBtn" : "cloneConsentStopBtn");
@@ -2835,7 +2853,7 @@ async function commitVoice() {
         state.voiceAssets = data.voice_assets || {};
         renderVoice();
         const n = Object.keys(data.clips || {}).length;
-        setStatus(`已入库 ${n} 句语音 → assets/game/${data.game_dir}`, "ok");
+        setStatus(t("已入库 {count} 句语音 → assets/game/{game_dir}", { count: n, game_dir: data.game_dir }), "ok");
       },
     });
   } catch (err) {
@@ -3479,7 +3497,7 @@ async function deletePortrait(portraitId) {
     }
     renderPortraitList();
     refreshActionLocks();
-    setStatus(`已删除立绘「${name}」。`, "ok");
+    setStatus(t("已删除立绘「{name}」。", { name }), "ok");
   } catch (err) {
     setStatus(err.message || String(err), "bad");
   }
@@ -3514,7 +3532,7 @@ async function inferPortrait() {
   JOBS.keys.add(key);
   refreshActionLocks();
   const taskId = pushTask(t("立绘提示词"));
-  setStatus(`正在按 ${slots.length} 个套图写提示词…`, "wait", { toast: false });
+  setStatus(t("正在按 {count} 个套图写提示词…", { count: slots.length }), "wait", { toast: false });
   try {
     const data = await api("/api/portraits/infer", {
       method: "POST",
@@ -3531,7 +3549,7 @@ async function inferPortrait() {
     await refreshPortraitList();
     persistSession({ mode: "portraits", portrait_id: data.portrait_id });
     setStatus(
-      `已写好「${data.display_name || data.portrait_id}」共 ${slots.length} 槽。先出三视图。`,
+      t("已写好「{portrait}」共 {count} 槽。先出三视图。", { portrait: data.display_name || data.portrait_id, count: slots.length }),
       "ok"
     );
   } catch (err) {
@@ -3557,20 +3575,20 @@ async function inferPortraitSlotPrompt(slotId) {
   const title = slot.title || slotId;
   const note =
     window.prompt(
-      `「${title}」哪里不满意？\n例如：脸太幼、围巾太大、四格姿势雷同、想更侧视…\n可留空，系统会换一套分镜。`,
+      t("「{title}」哪里不满意？\n例如：脸太幼、围巾太大、四格姿势雷同、想更侧视…\n可留空，系统会换一套分镜。", { title }),
       state.portrait?.prompt_notes?.[slotId] || ""
     ) ?? null;
   if (note === null) return false;
   const key = `portrait-reprompt:${pid}:${slotId}`;
   if (JOBS.keys.has(key)) {
-    setStatus(`「${title}」正在重写提示词…`, "wait");
+    setStatus(t("「{title}」正在重写提示词…", { title }), "wait");
     return false;
   }
   JOBS.keys.add(key);
   refreshActionLocks();
   persistVertex();
-  const taskId = pushTask(`${state.portrait.display_name || pid} · 微调 ${title}`);
-  setStatus(`正在按意见重写「${title}」提示词…`, "wait", { toast: false });
+  const taskId = pushTask(t("{portrait} · 微调 {title}", { portrait: state.portrait.display_name || pid, title }));
+  setStatus(t("正在按意见重写「{title}」提示词…", { title }), "wait", { toast: false });
   try {
     const data = await api("/api/portraits/infer-slot", {
       method: "POST",
@@ -3592,8 +3610,8 @@ async function inferPortraitSlotPrompt(slotId) {
     }
     setStatus(
       note
-        ? `「${title}」提示词已按意见重写。可再改字，然后点「再出一版草稿」。`
-        : `「${title}」提示词已换一套分镜。确认后点「再出一版草稿」。`,
+        ? t("「{title}」提示词已按意见重写。可再改字，然后点「再出一版草稿」。", { title })
+        : t("「{title}」提示词已换一套分镜。确认后点「再出一版草稿」。", { title }),
       "ok"
     );
     return true;
@@ -3625,14 +3643,14 @@ async function generatePortraitSlot(slotId) {
   const frames = planSlot?.id === "turnaround" ? 4 : Number(planSlot?.frames || 5);
   const key = `portrait-gen:${pid}:${slotId}`;
   if (JOBS.keys.has(key)) {
-    setStatus(`「${slotId}」已在出图…`, "wait");
+    setStatus(t("「{slot}」已在出图…", { slot: slotId }), "wait");
     return false;
   }
   JOBS.keys.add(key);
   markBusyCards();
   refreshActionLocks();
-  const taskId = pushTask(`立绘 · ${slotId}`);
-  setStatus(`正在出「${slotId}」草稿（${frames} 帧）…`, "wait", { toast: false });
+  const taskId = pushTask(t("立绘 · {slot}", { slot: slotId }));
+  setStatus(t("正在出「{slot}」草稿（{frames} 帧）…", { slot: slotId, frames }), "wait", { toast: false });
   try {
     const data = await api("/api/portraits/generate", {
       method: "POST",
@@ -3648,7 +3666,7 @@ async function generatePortraitSlot(slotId) {
     });
     updateTask(taskId, "ok", "");
     applyPortraitPayload(data);
-    setStatus(`「${slotId}」草稿已出。可切分后去青导出。`, "ok");
+    setStatus(t("「{slot}」草稿已出。可切分后去青导出。", { slot: slotId }), "ok");
     return true;
   } catch (err) {
     updateTask(taskId, "bad", err.message || err);
@@ -3683,8 +3701,8 @@ async function generateAllPortraits() {
   if (JOBS.keys.has(batchKey)) return;
   JOBS.keys.add(batchKey);
   refreshActionLocks();
-  const batchId = pushTask(`${who} · 其余 ${pending.length} 个动作`);
-  setStatus(`「${who}」跳过三视图，开始生成其余 ${pending.length} 个动作…`, "wait", { toast: false });
+  const batchId = pushTask(t("{name} · 其余 {count} 个动作", { name: who, count: pending.length }));
+  setStatus(t("「{name}」跳过三视图，开始生成其余 {count} 个动作…", { name: who, count: pending.length }), "wait", { toast: false });
   let ok = 0;
   let fail = 0;
   try {
@@ -3693,7 +3711,7 @@ async function generateAllPortraits() {
       if (done) ok += 1;
       else fail += 1;
     }
-    updateTask(batchId, fail ? "bad" : "ok", `成功 ${ok} / 失败 ${fail}`);
+    updateTask(batchId, fail ? "bad" : "ok", t("成功 {ok} / 失败 {fail}", { ok, fail }));
     setStatus(
       fail
         ? `其余动作：成功 ${ok}，失败 ${fail}。失败的可在卡片上重试。`
@@ -3733,7 +3751,7 @@ async function adoptPortraitCandidate(slotId, candidate) {
       body: JSON.stringify({ portrait_id: pid, slot_id: slotId, candidate }),
     });
     applyPortraitPayload(data);
-    setStatus(`已采用「${slotId}」候选 ${candidate}；请重新切分再播放/导出。`, "ok");
+    setStatus(t("已采用「{slot}」候选 {candidate}；请重新切分再播放/导出。", { slot: slotId, candidate }), "ok");
   } catch (err) {
     setStatus(err.message || String(err), "bad");
   }
@@ -3747,7 +3765,7 @@ async function splitPortraitSlot(slotId) {
   const asset = state.portraitAssets?.[slotId] || {};
   if (asset.timeline_final) {
     const baseN = Number(asset.base_frame_count || 5);
-    if (!confirm(`这会丢弃身长工作区已确定的最终 ${asset.frame_count} 帧时间线，并从原始草稿重新切为基础 ${baseN} 帧。确定重置吗？`)) return;
+    if (!confirm(t("这会丢弃身长工作区已确定的最终 {frames} 帧时间线，并从原始草稿重新切为基础 {baseN} 帧。确定重置吗？", { frames: asset.frame_count, baseN }))) return;
   }
   const variants = Math.max(1, Number(asset.split_variants || 8));
   const variant = asset.split_count ? (Number(asset.split_variant || 0) + 1) % variants : 0;
@@ -3764,7 +3782,16 @@ async function splitPortraitSlot(slotId) {
       renderPortraitBoard();
       if (wasPlaying) await startPlayback(slotId, { kind: "portrait" });
     }
-    setStatus(`「${slotId}」已切成 ${data.frames?.length || 0} 帧（${data.asset?.split_label || t("新切法")} · ${Number(data.asset?.split_variant || 0) + 1}/${variants}）。切分只改变格子边界；透明洞请重新去青导出验证。`, "ok");
+    setStatus(
+      t("「{slot}」已切成 {count} 帧（{split_label} · {split_variant}/{variants}）。切分只改变格子边界；透明洞请重新去青导出验证。", {
+        slot: slotId,
+        count: data.frames?.length || 0,
+        split_label: data.asset?.split_label || t("新切法"),
+        split_variant: Number(data.asset?.split_variant || 0) + 1,
+        variants,
+      }),
+      "ok"
+    );
   } catch (err) {
     setStatus(err.message || String(err), "bad");
   } finally {
@@ -3783,7 +3810,7 @@ async function exportPortraitSlot(slotId) {
   }
   JOBS.keys.add(key);
   refreshActionLocks();
-  const taskId = pushTask(slotId ? `导出 · ${slotId}` : t("导出全部立绘"));
+  const taskId = pushTask(slotId ? t("导出 · {slot}", { slot: slotId }) : t("导出全部立绘"));
   setStatus(t("正在去青导出透明帧…"), "wait", { toast: false });
   try {
     const data = await api("/api/portraits/export", {
@@ -3795,7 +3822,7 @@ async function exportPortraitSlot(slotId) {
     const dir = data.exports?.[0]?.dir || "";
     const errN = (data.errors || []).length;
     const failures = (data.errors || []).map((item) => `${portraitSlotTitle(item.slot_id)}：${String(item.error).replace(/[。；;\s]+$/, "")}`).join("；");
-    updateTask(taskId, errN ? "partial" : "ok", errN ? `${errN} 项失败。${failures}` : `已导出 ${n} 帧`);
+    updateTask(taskId, errN ? "partial" : "ok", errN ? t("{errN} 项失败。{fail}", { errN, fail: failures }) : t("已导出 {count} 帧", { count: n }));
     setStatus(
       errN
         ? `导出部分完成：已保留 ${n} 帧，${errN} 项失败。${failures}。可在对应卡片重试导出。`
@@ -3862,7 +3889,7 @@ async function refreshHealth() {
         try {
           await openPortrait(session.portrait_id);
         } catch (err) {
-          setStatus(`上次的立绘打不开：${err.message || err}`, "bad");
+          setStatus(t("上次的立绘打不开：{message}", { message: err.message || err }), "bad");
         }
       }
       return;
@@ -3872,7 +3899,7 @@ async function refreshHealth() {
     try {
       heroes = (await loadHeroes()) || [];
     } catch (err) {
-      setStatus(`英雄列表加载失败：${err.message || err}`, "bad");
+      setStatus(t("英雄列表加载失败：{message}", { message: err.message || err }), "bad");
     }
     const session = readSession();
     if ($("appearance") && !($("appearance").value || "").trim()) {
@@ -3895,7 +3922,7 @@ async function refreshHealth() {
       try {
         await openHero(resumeId);
       } catch (err) {
-        setStatus(`上次的英雄打不开：${err.message || err}`, "bad");
+        setStatus(t("上次的英雄打不开：{message}", { message: err.message || err }), "bad");
       }
     }
   } catch (err) {
@@ -3966,11 +3993,11 @@ async function loadHeroes() {
       const prog = h.progress || {};
       const done = prog.done ?? Object.keys(h.thumbs || {}).length;
       const total = prog.total || state.heroSlots.length || 13;
-      const mark = prog.incomplete === false ? "齐" : `${done}/${total}`;
+      const mark = prog.incomplete === false ? t("齐") : `${done}/${total}`;
       return `<div class="asset-row">
           <button type="button" class="asset-item${state.bible?.hero_id === h.hero_id ? " on" : ""}" data-open="${h.hero_id}">
           ${ico}
-          <span class="asset-meta"><b>${h.display_name}</b><small>${h.hero_id} · ${mark} 槽</small></span>
+          <span class="asset-meta"><b>${escapeHtml(h.display_name || h.hero_id)}</b><small>${escapeHtml(h.hero_id)} · ${t("{mark} 槽", { mark })}</small></span>
         </button>
           <button type="button" class="asset-del" data-delete-hero="${h.hero_id}" title="${t("删除这份草稿")}">${t("删")}</button>
         </div>`;
@@ -4034,7 +4061,7 @@ async function openHero(heroId) {
     renderBoard();
     refreshActionLocks();
   }
-  setStatus(`正在载入「${listName}」…可先改提示词，图卡稍后刷出。`, "wait", { toast: false });
+  setStatus(t("正在载入「{listName}」…可先改提示词，图卡稍后刷出。", { listName }), "wait", { toast: false });
 
   try {
     const data = await api(`/api/heroes/${heroId}`, { signal: heroOpenAbort.signal });
@@ -4043,7 +4070,7 @@ async function openHero(heroId) {
     document.querySelectorAll("#heroList [data-open]").forEach((el) => {
       el.classList.toggle("on", el.getAttribute("data-open") === heroId);
     });
-    setStatus(`已载入英雄「${data.bible.display_name || heroId}」`, "ok");
+    setStatus(t("已载入英雄「{hero}」", { hero: data.bible.display_name || heroId }), "ok");
   } catch (err) {
     if (seq !== heroOpenSeq || err?.code === "aborted") return;
     setStatus(err.message || String(err), "bad");
@@ -4119,7 +4146,7 @@ async function openStage(stageId) {
   document.querySelectorAll("#stageList [data-open-stage]").forEach((el) => {
     el.classList.toggle("on", el.getAttribute("data-open-stage") === stageId);
   });
-  setStatus(`已载入地图「${data.bible.display_name || stageId}」（地图库）`, "ok");
+  setStatus(t("已载入地图「{stage}」（地图库）", { stage: data.bible.display_name || stageId }), "ok");
 }
 
 async function inferStyle() {
@@ -4248,7 +4275,7 @@ async function inferStage() {
       refreshActionLocks();
       setStatus(
         data.updated
-          ? `已更新「${data.bible?.display_name || newId}」的提示词，还是这一张地图。改完再出图。`
+          ? t("已更新「{newId}」的提示词，还是这一张地图。改完再出图。", { newId: data.bible?.display_name || newId })
           : t("提示词已写到右侧卡片。改完再点「② 按提示词出图」。"),
         "ok"
       );
@@ -4256,10 +4283,11 @@ async function inferStage() {
       state.stages = data.stages || state.stages;
       fillStageSelects();
       renderStageList();
+      const stageLabel = data.bible?.display_name || newId;
       pushToast(
         data.updated
-          ? `地图「${data.bible?.display_name || newId}」提示词已更新。`
-          : `地图「${data.bible?.display_name || newId}」提示词已写好。`,
+          ? t("地图「{newId}」提示词已更新。", { newId: stageLabel })
+          : t("地图「{newId}」提示词已写好。", { newId: stageLabel }),
         "ok"
       );
     }
@@ -4285,14 +4313,14 @@ async function generateStage() {
   const vertex = vertexFromForm();
   const key = `stage:${stageId}`;
   if (JOBS.keys.has(key)) {
-    jobNote(viewingStage(stageId), `地图「${name}」已在出图，可先做别的地图或英雄。`, "ok");
+    jobNote(viewingStage(stageId), t("地图「{name}」已在出图，可先做别的地图或英雄。", { name }), "ok");
     return false;
   }
   JOBS.keys.add(key);
   markBusyCards();
   refreshActionLocks();
-  const taskId = pushTask(`地图 · ${name}`);
-  if (viewingStage(stageId)) setStatus(`正在生成地图「${name}」。可切换到其他地图或英雄，任务在后台继续。`, "wait", { toast: false });
+  const taskId = pushTask(t("地图 · {name}", { name }));
+  if (viewingStage(stageId)) setStatus(t("正在生成地图「{name}」。可切换到其他地图或英雄，任务在后台继续。", { name }), "wait", { toast: false });
   const prevDraft = state.stageAsset?.draft_url || state.stageAsset?.url || "";
   try {
     let data;
@@ -4336,17 +4364,28 @@ async function generateStage() {
       fillStageSelects();
       renderStageList();
       renderBoard();
-      jobNote(true, `地图草稿已出「${data.bible.display_name}」。满意再点「采用入库」。${missNote(data)}`, "ok");
+      jobNote(
+        true,
+        t("地图草稿已出「{display_name}」。满意再点「采用入库」。{data}", {
+          display_name: data.bible.display_name,
+          data: missNote(data),
+        }),
+        "ok"
+      );
     } else {
       state.stages = data.stages || state.stages;
       fillStageSelects();
       renderStageList();
-      jobNote(false, `地图「${data.bible.display_name || name}」草稿已出。打开该地图可选用入库。`, "ok");
+      jobNote(
+        false,
+        t("地图「{name}」草稿已出。打开该地图可选用入库。", { name: data.bible.display_name || name }),
+        "ok"
+      );
     }
     return true;
   } catch (err) {
     updateTask(taskId, "bad", err.message || err);
-    jobNote(viewingStage(stageId), `地图「${name}」失败：${err.message || err}`, "bad");
+    jobNote(viewingStage(stageId), t("地图「{name}」失败：{message}", { name, message: err.message || err }), "bad");
     return false;
   } finally {
     JOBS.keys.delete(key);
@@ -4368,7 +4407,7 @@ async function generateStageBgm() {
   const name = state.stageBible.display_name || stageId;
   const key = `stage-bgm:${stageId}`;
   if (JOBS.keys.has(key)) {
-    setStatus(`地图「${name}」BGM 正在生成…`, "wait");
+    setStatus(t("地图「{name}」BGM 正在生成…", { name }), "wait");
     return;
   }
   persistVertex();
@@ -4376,8 +4415,8 @@ async function generateStageBgm() {
   refreshActionLocks();
   const bpm = Number($("stageBgmBpm")?.value || 118) || 118;
   const useImage = $("stageBgmUseImage")?.checked !== false;
-  const taskId = pushTask(`BGM · ${name}`);
-  setStatus(`正在用 Lyria 生成「${name}」BGM（约 30 秒）…`, "wait", { toast: false });
+  const taskId = pushTask(t("BGM · {name}", { name }));
+  setStatus(t("正在用 Lyria 生成「{name}」BGM（约 30 秒）…", { name }), "wait", { toast: false });
   try {
     const data = await api("/api/stages/bgm/generate", {
       method: "POST",
@@ -4394,13 +4433,19 @@ async function generateStageBgm() {
       state.stageBgmMeta = data.bgm_meta || null;
       refreshStageBgmPreview();
       refreshActionLocks();
-      jobNote(true, `BGM 草稿已出。试听满意后点「采用 BGM 入库」。${data.note ? ` ${String(data.note).slice(0, 120)}` : ""}`, "ok");
+      jobNote(
+        true,
+        t("BGM 草稿已出。试听满意后点「采用 BGM 入库」。{slice}", {
+          slice: data.note ? ` ${String(data.note).slice(0, 120)}` : "",
+        }),
+        "ok"
+      );
     } else {
-      jobNote(false, `地图「${name}」BGM 草稿已出。打开该地图可试听并入库。`, "ok");
+      jobNote(false, t("地图「{name}」BGM 草稿已出。打开该地图可试听并入库。", { name }), "ok");
     }
   } catch (err) {
     updateTask(taskId, "bad", err.message || err);
-    jobNote(viewingStage(stageId), `BGM 失败：${err.message || err}`, "bad");
+    jobNote(viewingStage(stageId), t("BGM 失败：{message}", { message: err.message || err }), "bad");
   } finally {
     JOBS.keys.delete(key);
     refreshActionLocks();
@@ -4422,7 +4467,7 @@ async function commitStageBgm() {
     state.stageBgmMeta = data.bgm_meta || null;
     refreshStageBgmPreview();
     refreshActionLocks();
-    setStatus(`BGM 已入库 → assets/game/${data.game_file || `stages/${stageId}/bgm.mp3`}。对战端会自动循环。`, "ok");
+    setStatus(t("BGM 已入库 → assets/game/{stage}。对战端会自动循环。", { stage: data.game_file || `stages/${stageId}/bgm.mp3` }), "ok");
   } catch (err) {
     setStatus(String(err.message || err), "bad");
   }
@@ -4494,7 +4539,10 @@ async function infer() {
         "ok"
       );
     } else {
-      pushToast(`${data.bible?.display_name || newId} 提示词已写好。打开该英雄可继续出图。`, "ok");
+      pushToast(
+        t("{newId} 提示词已写好。打开该英雄可继续出图。", { newId: data.bible?.display_name || newId }),
+        "ok"
+      );
     }
     await loadHeroes();
   } catch (err) {
@@ -4513,10 +4561,10 @@ async function inferSlotPrompt(slotId) {
   }
   const heroId = currentHeroId();
   const title = SLOT_BY_ID(slotId)?.title || slotId;
-  const note = window.prompt(`「${title}」哪里不满意？可留空，系统会换一套分镜。`, "") ?? null;
+  const note = window.prompt(t("「{title}」哪里不满意？可留空，系统会换一套分镜。", { title }), "") ?? null;
   if (note === null) return false;
   persistVertex();
-  const taskId = pushTask(`${state.bible.display_name || heroId} · 重写 ${title}`);
+  const taskId = pushTask(t("{hero} · 重写 {title}", { hero: state.bible.display_name || heroId, title }));
   try {
     const data = await api("/api/infer-slot", {
       method: "POST",
@@ -4537,11 +4585,16 @@ async function inferSlotPrompt(slotId) {
       renderBible();
       renderBoard();
       setStatus(
-        note ? `「${title}」已按你的意见重写：${note}` : `「${title}」提示词已重写。可改完再点生成草稿。`,
+        note
+          ? t("「{title}」已按你的意见重写：{note}", { title, note })
+          : t("「{title}」提示词已重写。可改完再点生成草稿。", { title }),
         "ok"
       );
     } else {
-      pushToast(`${data.bible?.display_name || heroId}「${title}」提示词已重写。`, "ok");
+      pushToast(
+        t("{hero}「{title}」提示词已重写。", { hero: data.bible?.display_name || heroId, title }),
+        "ok"
+      );
     }
     return true;
   } catch (err) {
@@ -4558,7 +4611,7 @@ async function deleteHeroDraft(heroId) {
     return;
   }
   const name = state.bible?.hero_id === id ? state.bible.display_name || id : id;
-  if (!window.confirm(`删除英雄草稿「${name}」？\n会清掉工坊设定和全部草稿图。已入库的 assets/game 文件不会动。`)) {
+  if (!window.confirm(t("删除英雄草稿「{name}」？\n会清掉工坊设定和全部草稿图。已入库的 assets/game 文件不会动。", { name }))) {
     return;
   }
   try {
@@ -4581,7 +4634,7 @@ async function deleteHeroDraft(heroId) {
     else await loadHeroes();
     renderBible();
     renderBoard();
-    setStatus(`已删除草稿「${id}」。`, "ok");
+    setStatus(t("已删除草稿「{id}」。", { id }), "ok");
   } catch (err) {
     setStatus(String(err.message || err), "bad");
   }
@@ -4621,7 +4674,7 @@ async function deleteStage(stageId) {
     fillStageSelects();
     renderBoard();
     refreshActionLocks();
-    setStatus(`已删除地图「${name}」。`, "ok");
+    setStatus(t("已删除地图「{name}」。", { name }), "ok");
   } catch (err) {
     setStatus(String(err.message || err), "bad");
   }
@@ -4644,14 +4697,14 @@ async function generateSlot(slotId, opts = {}) {
   const who = bible.display_name || heroId;
   if (!opts.heroId && playback.slotId === slotId) stopPlayback();
   if (slotId !== "turnaround" && viewingHero(heroId) && !state.assets.turnaround?.committed) {
-    const tid = pushTask(`${who} · ${title}`);
+    const tid = pushTask(t("{name} · {title}", { name: who, title }));
     updateTask(tid, "bad", t("请先把人物三视图采用入库。"));
     setStatus(t("请先生成并采用入库人物三视图，再生成其他套图。"), "bad");
     return false;
   }
   const key = `hero:${heroId}:${slotId}`;
   if (JOBS.keys.has(key)) {
-    jobNote(viewingHero(heroId), `「${who} · ${title}」已在出图，可先做别的英雄。`, "ok");
+    jobNote(viewingHero(heroId), t("「{name} · {title}」已在出图，可先做别的英雄。", { name: who, title }), "ok");
     return false;
   }
   const prompt = opts.prompt ?? (document.querySelector(`[data-prompt="${slotId}"]`)?.value || bible.prompts?.[slotId] || "");
@@ -4660,8 +4713,8 @@ async function generateSlot(slotId, opts = {}) {
   JOBS.keys.add(key);
   markBusyCards();
   refreshActionLocks();
-  const taskId = pushTask(`${who} · ${title}`);
-  if (viewingHero(heroId)) setStatus(`正在生成「${who} · ${title}」。可切换到其他英雄，任务在后台继续。`, "wait", { toast: false });
+  const taskId = pushTask(t("{name} · {title}", { name: who, title }));
+  if (viewingHero(heroId)) setStatus(t("正在生成「{name} · {title}」。可切换到其他英雄，任务在后台继续。", { name: who, title }), "wait", { toast: false });
   const prevDraft = state.assets?.[slotId]?.draft_url || state.assets?.[slotId]?.url || "";
   try {
     let data;
@@ -4692,8 +4745,8 @@ async function generateSlot(slotId, opts = {}) {
       if (!recovered?.assets?.[slotId]) throw err;
       data = { asset: recovered.assets[slotId], attempts: 1, missing_refs: [] };
     }
-    const retried = data.attempts > 1 ? `因帧重复已重出 ${data.attempts} 次。` : "";
-    const modelNote = data.image_model ? `模型 ${data.image_model}。` : "";
+    const retried = data.attempts > 1 ? t("因帧重复已重出 {attempts} 次。", { attempts: data.attempts }) : "";
+    const modelNote = data.image_model ? t("模型 {provider}。", { provider: data.image_model }) : "";
     updateTask(taskId, "ok", retried || modelNote || t("完成"));
     if (viewingHero(heroId)) {
       mediaNonce[nonceKey(slotId, heroId)] = String(Date.now());
@@ -4704,15 +4757,24 @@ async function generateSlot(slotId, opts = {}) {
       }
       renderBible();
       patchHeroCard(slotId);
-      jobNote(true, `草稿已出 ${title}。${modelNote}${retried}请先切分并播放确认，再点「采用入库」。切分不会写入游戏。${missNote(data)}`, "ok");
+      jobNote(
+        true,
+        t("草稿已出 {title}。{provider}{retried}请先切分并播放确认，再点「采用入库」。切分不会写入游戏。{data}", {
+          title,
+          provider: modelNote,
+          retried,
+          data: missNote(data),
+        }),
+        "ok"
+      );
     } else {
-      jobNote(false, `${who}「${title}」草稿已出。打开该英雄可切分播放、选用入库。`, "ok");
+      jobNote(false, t("{name}「{title}」草稿已出。打开该英雄可切分播放、选用入库。", { name: who, title }), "ok");
     }
     loadHeroes().catch(() => {});
     return true;
   } catch (err) {
     updateTask(taskId, "bad", err.message || err);
-    jobNote(viewingHero(heroId), `${who}「${title}」失败：${err.message || err}`, "bad");
+    jobNote(viewingHero(heroId), t("{name}「{title}」失败：{message}", { name: who, title, message: err.message || err }), "bad");
     return false;
   } finally {
     JOBS.keys.delete(key);
@@ -4954,7 +5016,7 @@ async function splitSlot(slotId) {
         if (data.frame_count === 4 || data.frame_count === 5 || data.frame_count === 6) writeSplitFramesChoice(slotId, data.frame_count);
         renderBoard();
         if (wasPlaying) await startPlayback(slotId, { kind: "hero" });
-        setStatus(`「${title}」已切成 ${data.frames?.length || 0} 格（${data.variant_label || t("预览")} · ${data.frame_count || frames || "?"} 帧）。这只是预览，还没入库。不满意再点「重新切分」会换一种切法，不必重新生图。`, "ok");
+        setStatus(t("「{title}」已切成 {count} 格（{variant_label} · {frames} 帧）。这只是预览，还没入库。不满意再点「重新切分」会换一种切法，不必重新生图。", { title, count: data.frames?.length || 0, variant_label: data.variant_label || t("预览"), frames: data.frame_count || frames || "?" }), "ok");
         return true;
       },
     });
@@ -5425,14 +5487,14 @@ function syncBodyScaleToolControls() {
   if (scaleLabel) {
     const first = scaleLabel.childNodes[0];
     if (first && first.nodeType === Node.TEXT_NODE) {
-      first.textContent = sel.length > 1 ? `选中 ${sel.length} 帧尺寸 ` : t("选中帧尺寸 ");
+      first.textContent = sel.length > 1 ? t("选中 {count} 帧尺寸 ", { count: sel.length }) : t("选中帧尺寸 ");
     }
   }
   const feetLabel = document.querySelector("label.body-scale-feet");
   if (feetLabel) {
     const first = feetLabel.childNodes[0];
     if (first && first.nodeType === Node.TEXT_NODE) {
-      first.textContent = sel.length > 1 ? `选中 ${sel.length} 帧脚位 ` : t("选中帧脚位 ");
+      first.textContent = sel.length > 1 ? t("选中 {count} 帧脚位 ", { count: sel.length }) : t("选中帧脚位 ");
     }
   }
   if ($("bodyScaleSelectAll")) $("bodyScaleSelectAll").disabled = !has || BODY_WS.busy;
@@ -5469,11 +5531,11 @@ function renderBodyScaleBuffer() {
   bodyWsEnsureOrder();
   const items = BODY_WS.buffer || [];
   if (!items.length) {
-    box.innerHTML = `<span class="body-scale-buffer-empty">空 · 从时间线「移入缓冲」的贴图会出现在这里；点缩略图插回选中帧之后。保存时仍留在缓冲里的帧会丢弃。</span>`;
+    box.innerHTML = t("<span class=\"body-scale-buffer-empty\">空 · 从时间线「移入缓冲」的贴图会出现在这里；点缩略图插回选中帧之后。保存时仍留在缓冲里的帧会丢弃。</span>");
     if (note) note.textContent = t("移除缓冲 0");
     return;
   }
-  if (note) note.textContent = `移除缓冲 ${items.length}`;
+  if (note) note.textContent = t("移除缓冲 {count}", { count: items.length });
   box.innerHTML = items
     .map((src) => {
       const f = bodyWsSourceFrame(src);
@@ -5565,9 +5627,9 @@ function syncBodyScaleGuideControls(data) {
   BODY_WS.visualScale = Number(data.visual_scale || guide / BODY_WS.defaultGuideH || 1);
   if ($("bodyScaleGuideH")) $("bodyScaleGuideH").value = String(guide);
   if ($("bodyScaleGuideNote")) {
-    const idle = BODY_WS.idleBodyH ? ` · idle实测 ${BODY_WS.idleBodyH}px` : "";
+    const idle = BODY_WS.idleBodyH ? t(" · idle实测 {idleBodyH}px", { idleBodyH: BODY_WS.idleBodyH }) : "";
     const mode = BODY_WS.guideMode === "custom" ? t("本英雄自定义") : t("全库默认");
-    $("bodyScaleGuideNote").textContent = `${mode}${idle} · 游戏体型×${BODY_WS.visualScale}`;
+    $("bodyScaleGuideNote").textContent = t("{mode}{idle} · 游戏体型×{visualScale}", { mode, idle, visualScale: BODY_WS.visualScale });
   }
 }
 
@@ -5604,9 +5666,12 @@ async function applyBodyScaleGuide(raw) {
     setStatus(
       data.guide_mode === "custom"
         ? isPortrait
-          ? `已设立绘参考躯干 ${data.guide_body_h}px。请再「建议对齐」/保存各套草稿。`
-          : `已设本英雄参考躯干 ${data.guide_body_h}px（游戏体型×${data.visual_scale}）。请再「建议对齐」/保存各套。`
-        : `已恢复全库默认参考躯干 ${data.guide_body_h}px。`,
+          ? t("已设立绘参考躯干 {guide_body_h}px。请再「建议对齐」/保存各套草稿。", { guide_body_h: data.guide_body_h })
+          : t("已设本英雄参考躯干 {guide_body_h}px（游戏体型×{pct}）。请再「建议对齐」/保存各套。", {
+              guide_body_h: data.guide_body_h,
+              pct: data.visual_scale,
+            })
+        : t("已恢复全库默认参考躯干 {guide_body_h}px。", { guide_body_h: data.guide_body_h }),
       "ok"
     );
     await loadBodyScaleSlot(BODY_WS.index);
@@ -5627,7 +5692,9 @@ function renderBodyScaleChrome() {
       : state.bible?.display_name || BODY_WS.heroId;
   if ($("bodyScaleTitle")) {
     $("bodyScaleTitle").textContent =
-      BODY_WS.kind === "portrait" ? `${who} · 立绘身长校对` : `${who} · 身长校对工作区`;
+      BODY_WS.kind === "portrait"
+        ? t("{name} · 立绘身长校对", { name: who })
+        : t("{name} · 身长校对工作区", { name: who });
   }
   if ($("bodyScaleMeta")) {
     const refH = detail?.ref_body_h || BODY_WS.refBodyH || "—";
@@ -5637,12 +5704,15 @@ function renderBodyScaleChrome() {
     const warn = BODY_WS.slots.length - ok;
     const refSlotId = detail?.ref_slot || BODY_WS.refSlot || "idle";
     const refTitle = portraitSlotTitle(refSlotId);
-    const idleBit = idleH ? ` · ${refTitle}实测 ${idleH}px` : "";
+    const idleBit = idleH ? t(" · {title}实测 {idleH}px", { title: refTitle, idleH }) : "";
     const scope =
       BODY_WS.kind === "portrait"
-        ? `已校对 ${BODY_WS.slots.length} 套`
-        : `已入库 ${BODY_WS.slots.length} 套`;
-    $("bodyScaleMeta").textContent = `参考躯干 ${refH}px（${mode}）${idleBit} · ${scope}（${ok} 齐 / ${warn} 差） · 绿=脚 青=头 · ⌘多选/Shift连选`;
+        ? t("已校对 {count} 套", { count: BODY_WS.slots.length })
+        : t("已入库 {count} 套", { count: BODY_WS.slots.length });
+    $("bodyScaleMeta").textContent = t(
+      "参考躯干 {refH}px（{mode}）{idleBit} · {scope}（{ok} 齐 / {warn} 差） · 绿=脚 青=头 · ⌘多选/Shift连选",
+      { refH, mode, idleBit, scope, ok, warn }
+    );
   }
   if ($("bodyScaleGuideH") && (detail?.ref_body_h || BODY_WS.refBodyH)) {
     $("bodyScaleGuideH").value = String(detail?.ref_body_h || BODY_WS.refBodyH);
@@ -5663,11 +5733,24 @@ function renderBodyScaleChrome() {
     if (!detail) {
       $("bodyScaleSlotStat").textContent = t("加载中…");
     } else {
-      const mark = detail.ok ? "齐" : t("超差");
+      const mark = detail.ok ? t("齐") : t("超差");
       const ord = bodyWsOrderDirty() ? t(" · 序列已改") : "";
       const air = detail.air_acting ? t(" · 空中套（顶峰可高出头线）") : "";
-      const buf = BODY_WS.buffer?.length ? ` · 缓冲${BODY_WS.buffer.length}` : "";
-      $("bodyScaleSlotStat").textContent = `播放 ${bodyWsFrameCount()} 帧 · 躯干 ${detail.body_h}px  Δ${detail.delta >= 0 ? "+" : ""}${detail.delta} · ${mark}${air}${ord}${buf}${BODY_WS.dirty ? t(" · 有未保存微调") : ""}`;
+      const buf = BODY_WS.buffer?.length ? t(" · 缓冲{count}", { count: BODY_WS.buffer.length }) : "";
+      $("bodyScaleSlotStat").textContent = t(
+        "播放 {bodyWsFrameCount} 帧 · 躯干 {detail}px  Δ{pct}{pct2} · {mark}{air}{ord}{buf}{dirty}",
+        {
+          bodyWsFrameCount: bodyWsFrameCount(),
+          detail: detail.body_h,
+          pct: detail.delta >= 0 ? "+" : "",
+          pct2: detail.delta,
+          mark,
+          air,
+          ord,
+          buf,
+          dirty: BODY_WS.dirty ? t(" · 有未保存微调") : "",
+        }
+      );
     }
   }
   renderBodyScaleFrames();
@@ -5760,8 +5843,8 @@ async function openBodyScaleWorkspace() {
   JOBS.keys.add(jobKey);
   refreshActionLocks();
   const who = state.bible.display_name || heroId;
-  const taskId = pushTask(`${who} · 身长校对工作区`);
-  setStatus(`「${who}」正在打开身长校对工作区…`, "wait", { toast: false });
+  const taskId = pushTask(t("{name} · 身长校对工作区", { name: who }));
+  setStatus(t("「{name}」正在打开身长校对工作区…", { name: who }), "wait", { toast: false });
   try {
     const data = await api("/api/heroes/body-scale-workspace", {
       method: "POST",
@@ -5780,9 +5863,13 @@ async function openBodyScaleWorkspace() {
     );
     if (BODY_WS.index < 0) BODY_WS.index = 0;
     dlg.showModal();
-    finishTask(taskId, true, `${data.ok_count || 0} 齐 / ${data.warn_count || 0} 差`);
+    finishTask(
+      taskId,
+      true,
+      t("{ok_count} 齐 / {warn_count} 差", { ok_count: data.ok_count || 0, warn_count: data.warn_count || 0 })
+    );
     const mode = data.guide_mode === "custom" ? t("自定义") : t("全库默认");
-    setStatus(`「${who}」身长校对：参考躯干 ${data.ref_body_h}px（${mode}）。可逐套微调后入库。`, "ok");
+    setStatus(t("「{name}」身长校对：参考躯干 {ref_body_h}px（{mode}）。可逐套微调后入库。", { name: who, ref_body_h: data.ref_body_h, mode }), "ok");
     await loadBodyScaleSlot(BODY_WS.index);
   } catch (err) {
     finishTask(taskId, false, err.message || String(err));
@@ -5814,8 +5901,8 @@ async function openPortraitBodyScaleWorkspace() {
   JOBS.keys.add(jobKey);
   refreshActionLocks();
   const who = state.portrait?.display_name || pid;
-  const taskId = pushTask(`${who} · 立绘身长校对`);
-  setStatus(`「${who}」正在打开立绘身长校对…`, "wait", { toast: false });
+  const taskId = pushTask(t("{name} · 立绘身长校对", { name: who }));
+  setStatus(t("「{name}」正在打开立绘身长校对…", { name: who }), "wait", { toast: false });
   try {
     const data = await api("/api/portraits/body-scale-workspace", {
       method: "POST",
@@ -5834,9 +5921,13 @@ async function openPortraitBodyScaleWorkspace() {
     BODY_WS.index = Math.max(0, BODY_WS.slots.findIndex((s) => !s.ok));
     if (BODY_WS.index < 0) BODY_WS.index = 0;
     dlg.showModal();
-    finishTask(taskId, true, `${data.ok_count || 0} 齐 / ${data.warn_count || 0} 差`);
+    finishTask(
+      taskId,
+      true,
+      t("{ok_count} 齐 / {warn_count} 差", { ok_count: data.ok_count || 0, warn_count: data.warn_count || 0 })
+    );
     setStatus(
-      `「${who}」立绘身长校对：参考躯干 ${data.ref_body_h}px。保存会写回草稿并自动去青导出该槽。`,
+      t("「{name}」立绘身长校对：参考躯干 {ref_body_h}px。保存会写回草稿并自动去青导出该槽。", { name: who, ref_body_h: data.ref_body_h }),
       "ok"
     );
     await loadBodyScaleSlot(BODY_WS.index);
@@ -5932,14 +6023,32 @@ async function saveBodyScaleSlot() {
     }
     const dropped = (data.dropped_sources || []).length;
     const expN = Number(data.export_count || 0);
+    const slotLabel = slot.title || slot.id;
     setStatus(
       isPortrait
         ? dropped
-          ? `「${slot.title || slot.id}」已保存并去青导出 ${expN || data.frame_count} 帧（丢弃缓冲 ${dropped}）。`
-          : `「${slot.title || slot.id}」已保存并去青导出 ${expN || data.frame_count} 帧（躯干 ${data.body_h}px）。`
+          ? t("「{slot}」已保存并去青导出 {frames} 帧（丢弃缓冲 {dropped}）。", {
+              slot: slotLabel,
+              frames: expN || data.frame_count,
+              dropped,
+            })
+          : t("「{slot}」已保存并去青导出 {frames} 帧（躯干 {body_h}px）。", {
+              slot: slotLabel,
+              frames: expN || data.frame_count,
+              body_h: data.body_h,
+            })
         : dropped
-          ? `「${slot.title || slot.id}」已入库（${data.frame_count} 帧，丢弃缓冲 ${dropped} 张，躯干 ${data.body_h}px）。`
-          : `「${slot.title || slot.id}」已按微调写入游戏（${data.frame_count} 帧，躯干 ${data.body_h}px）。`,
+          ? t("「{slot}」已入库（{frames} 帧，丢弃缓冲 {dropped} 张，躯干 {body_h}px）。", {
+              slot: slotLabel,
+              frames: data.frame_count,
+              dropped,
+              body_h: data.body_h,
+            })
+          : t("「{slot}」已按微调写入游戏（{frames} 帧，躯干 {body_h}px）。", {
+              slot: slotLabel,
+              frames: data.frame_count,
+              body_h: data.body_h,
+            }),
       "ok"
     );
     renderBodyScaleChrome();
@@ -5987,14 +6096,14 @@ async function unifyHeroBodyScale() {
   if (!heroId) return;
   const jobKey = `unify-body:${heroId}`;
   if (JOBS.keys.has(jobKey)) return;
-  if (!confirm("以已入库的「原地呼吸」躯干身高为基准（忽略武器/粒子尖刺），缩放对齐本英雄其它已入库动作条？\n跳跃/空中套会保留腾空高度，不会把跳顶压回地面。\n不重新生图；原图会备份到 _bak。\n若以前把跳跃压扁过，请再跑一次或从源图重新切分。\n完成后会打开身长校对工作区。")) {
+  if (!confirm(t("以已入库的「原地呼吸」躯干身高为基准（忽略武器/粒子尖刺），缩放对齐本英雄其它已入库动作条？\n跳跃/空中套会保留腾空高度，不会把跳顶压回地面。\n不重新生图；原图会备份到 _bak。\n若以前把跳跃压扁过，请再跑一次或从源图重新切分。\n完成后会打开身长校对工作区。"))) {
     return;
   }
   JOBS.keys.add(jobKey);
   refreshActionLocks();
   const who = state.bible.display_name || heroId;
-  const taskId = pushTask(`${who} · 统一人物尺寸`);
-  setStatus(`「${who}」正在统一各套图人物尺寸…`, "wait", { toast: false });
+  const taskId = pushTask(t("{name} · 统一人物尺寸", { name: who }));
+  setStatus(t("「{name}」正在统一各套图人物尺寸…", { name: who }), "wait", { toast: false });
   try {
     const data = await api("/api/heroes/unify-body-scale", {
       method: "POST",
@@ -6013,11 +6122,16 @@ async function unifyHeroBodyScale() {
       .filter((s) => !s.skipped)
       .map((s) => `${s.slot}: ×${s.scale} (${s.before}→${s.after})`)
       .slice(0, 8);
-    finishTask(taskId, true, `改了 ${changed} 张`);
+    finishTask(taskId, true, t("改了 {count} 张", { count: changed }));
     setStatus(
       changed
-        ? `「${who}」已统一人物尺寸（基准身长 ${data.ref_body_h}px，改了 ${changed} 张）。${lines.join("；")}`
-        : `「${who}」各套图已接近 idle 身长，无需改动。`,
+        ? t("「{name}」已统一人物尺寸（基准身长 {ref_body_h}px，改了 {count} 张）。{join}", {
+            name: who,
+            ref_body_h: data.ref_body_h,
+            count: changed,
+            join: lines.join("；"),
+          })
+        : t("「{name}」各套图已接近 idle 身长，无需改动。", { name: who }),
       "ok"
     );
     await openBodyScaleWorkspace();
@@ -6058,8 +6172,8 @@ async function generateAll() {
   if (JOBS.batches.has(heroId)) return;
   JOBS.batches.add(heroId);
   refreshActionLocks();
-  const batchId = pushTask(`${who} · 其余 ${pending.length} 张套图（3 路并行）`);
-  setStatus(`「${who}」开始批量出图（同时 3 张）。可切换到其他英雄或地图，任务在后台继续。`, "wait", { toast: false });
+  const batchId = pushTask(t("{name} · 其余 {count} 张套图（3 路并行）", { name: who, count: pending.length }));
+  setStatus(t("「{name}」开始批量出图（同时 3 张）。可切换到其他英雄或地图，任务在后台继续。", { name: who }), "wait", { toast: false });
   let ok = 0;
   let fail = 0;
   try {
@@ -6071,7 +6185,7 @@ async function generateAll() {
         cursor += 1;
         const slot = pending[i];
         if (viewingHero(heroId)) {
-          setStatus(`「${who}」批量出图 ${Math.min(i + 1, pending.length)}/${pending.length}（3 路并行）。可切换去做别的。`, "wait", { toast: false });
+          setStatus(t("「{name}」批量出图 {count}/{count2}（3 路并行）。可切换去做别的。", { name: who, count: Math.min(i + 1, pending.length), count2: pending.length }), "wait", { toast: false });
         }
         const result = await generateSlot(slot.id, {
           heroId,
@@ -6084,14 +6198,14 @@ async function generateAll() {
       }
     }
     await Promise.all(Array.from({ length: limit }, () => worker()));
-    const bits = [`「${who}」批量完成：成功 ${ok} 张`];
-    if (fail) bits.push(`失败 ${fail} 张`);
+    const bits = [t("「{name}」批量完成：成功 {ok} 张", { name: who, ok })];
+    if (fail) bits.push(t("失败 {fail} 张", { fail }));
     bits.push(t("打开该英雄逐张选用入库，或在卡片上单独重试。"));
-    updateTask(batchId, fail ? "bad" : "ok", `成功 ${ok} / 失败 ${fail}`);
+    updateTask(batchId, fail ? "bad" : "ok", t("成功 {ok} / 失败 {fail}", { ok, fail }));
     jobNote(viewingHero(heroId), bits.join(" · "), fail ? "bad" : "ok");
   } catch (err) {
     updateTask(batchId, "bad", err.message || err);
-    jobNote(viewingHero(heroId), `「${who}」批量出图失败：${err.message || err}`, "bad");
+    jobNote(viewingHero(heroId), t("「{name}」批量出图失败：{message}", { name: who, message: err.message || err }), "bad");
   } finally {
     JOBS.batches.delete(heroId);
     markBusyCards();
@@ -6135,7 +6249,7 @@ async function downloadContentPack(body, statusText) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  setStatus(`已下载 ${filename}。发给对战端：放入 game/incoming/ 或 python3 serve.py --import 该文件。`, "ok");
+  setStatus(t("已下载 {filename}。发给对战端：放入 game/incoming/ 或 python3 serve.py --import 该文件。", { filename }), "ok");
 }
 
 async function commitAsset(kind, slotId) {
@@ -6194,9 +6308,9 @@ async function commitAsset(kind, slotId) {
         } else if (kind === "stage" && data.bgm_packed) {
           state.stageBgmAsset = data.bgm_asset || state.stageBgmAsset;
           refreshStageBgmPreview();
-          setStatus(`已入库${where}，并一并打包 BGM 到 assets/game/stages/…/bgm.mp3。`, "ok");
+          setStatus(t("已入库{where}，并一并打包 BGM 到 assets/game/stages/…/bgm.mp3。", { where }), "ok");
         } else {
-          setStatus(`已入库${where}。之后的生图才会拿它当自动参考。已有入库会被覆盖，旧文件会留一份时间戳备份。`, "ok");
+          setStatus(t("已入库{where}。之后的生图才会拿它当自动参考。已有入库会被覆盖，旧文件会留一份时间戳备份。", { where }), "ok");
         }
       },
     });
@@ -6245,7 +6359,7 @@ async function discardPortraitSlot(slotId) {
     setStatus(t("该槽没有草稿可丢。"), "bad");
     return;
   }
-  if (!confirm(`丢弃「${slotId}」草稿与切分预览？已导出的透明帧会保留，直到你再去青导出覆盖。`)) {
+  if (!confirm(t("丢弃「{slot}」草稿与切分预览？已导出的透明帧会保留，直到你再去青导出覆盖。", { slot: slotId }))) {
     return;
   }
   if (playback.kind === "portrait" && playback.slotId === slotId) stopPlayback();
@@ -6260,7 +6374,7 @@ async function discardPortraitSlot(slotId) {
       renderPortraitBoard();
       refreshActionLocks();
     }
-    setStatus(`「${slotId}」草稿已丢弃。可改提示词后点「生成草稿」再出一版。`, "ok");
+    setStatus(t("「{slot}」草稿已丢弃。可改提示词后点「生成草稿」再出一版。", { slot: slotId }), "ok");
   } catch (err) {
     setStatus(err.message || String(err), "bad");
   }
@@ -6286,7 +6400,9 @@ async function unifyPortraitBodyScale() {
   if (JOBS.keys.has(jobKey)) return;
   if (
     !confirm(
-      "以基准动作（优先待机，否则走动等）草稿躯干身高为基准，NEAREST 缩放对齐其它动作草稿条？\n不重新生图；写回草稿并自动去青导出各槽。\n完成后会打开身长校对工作区。"
+      t(
+        "以基准动作（优先待机，否则走动等）草稿躯干身高为基准，NEAREST 缩放对齐其它动作草稿条？\n不重新生图；写回草稿并自动去青导出各槽。\n完成后会打开身长校对工作区。"
+      )
     )
   ) {
     return;
@@ -6294,8 +6410,8 @@ async function unifyPortraitBodyScale() {
   JOBS.keys.add(jobKey);
   refreshActionLocks();
   const who = state.portrait?.display_name || pid;
-  const taskId = pushTask(`${who} · 统一立绘尺寸`);
-  setStatus(`「${who}」正在统一各动作草稿尺寸…`, "wait", { toast: false });
+  const taskId = pushTask(t("{name} · 统一立绘尺寸", { name: who }));
+  setStatus(t("「{name}」正在统一各动作草稿尺寸…", { name: who }), "wait", { toast: false });
   try {
     const data = await api("/api/portraits/unify-body-scale", {
       method: "POST",
@@ -6307,11 +6423,16 @@ async function unifyPortraitBodyScale() {
       .filter((s) => !s.skipped)
       .map((s) => `${s.slot_id || s.slot}: ×${s.scale} (${s.before}→${s.after})`)
       .slice(0, 8);
-    finishTask(taskId, true, `改了 ${changed} 张`);
+    finishTask(taskId, true, t("改了 {count} 张", { count: changed }));
     setStatus(
       changed
-        ? `「${who}」已统一立绘尺寸并去青导出（基准 ${data.ref_body_h}px，改了 ${changed} 张）。${lines.join("；")}`
-        : `「${who}」各动作草稿已接近待机身长，无需改动。`,
+        ? t("「{name}」已统一立绘尺寸并去青导出（基准 {ref_body_h}px，改了 {count} 张）。{join}", {
+            name: who,
+            ref_body_h: data.ref_body_h,
+            count: changed,
+            join: lines.join("；"),
+          })
+        : t("「{name}」各动作草稿已接近待机身长，无需改动。", { name: who }),
       "ok"
     );
     await openPortraitBodyScaleWorkspace();
@@ -6340,7 +6461,7 @@ async function bakeSelectIcon() {
         });
         if (data.select_icon) state.assets.select_icon = data.select_icon;
         renderBoard();
-        setStatus(`选人头像已写入 assets/game/${data.select_file || `heroes/${heroId}/select.png`}`, "ok");
+        setStatus(t("选人头像已写入 assets/game/{hero}", { hero: data.select_file || `heroes/${heroId}/select.png` }), "ok");
       },
     });
   } catch (err) {
@@ -6601,7 +6722,7 @@ async function applySelectCrop() {
         if (data.select_icon) state.assets.select_icon = data.select_icon;
         closeSelectCropDialog();
         renderBoard();
-        setStatus(`选人头像已按裁剪写入 assets/game/${data.select_file || `heroes/${heroId}/select.png`}`, "ok");
+        setStatus(t("选人头像已按裁剪写入 assets/game/{hero}", { hero: data.select_file || `heroes/${heroId}/select.png` }), "ok");
       },
     });
   } catch (err) {
@@ -6740,7 +6861,7 @@ async function rekeyAsset(kind, slotId) {
         if (data.asset) state.assets[slotId] = data.asset;
         if (data.select_icon) state.assets.select_icon = data.select_icon;
         renderBoard();
-        setStatus(`已重新去青并覆盖游戏文件 → assets/game/${data.game_file}。这不是重新切分；原图和切分预览没动。`, "ok");
+        setStatus(t("已重新去青并覆盖游戏文件 → assets/game/{game_file}。这不是重新切分；原图和切分预览没动。", { game_file: data.game_file }), "ok");
       },
     });
   } catch (err) {

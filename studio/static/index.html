@@ -159,21 +159,21 @@
       </details>
 
       <section class="fold open" data-rail="style">
-        <h2>风格锚点</h2>
+        <h2 data-i18n="style.title">风格锚点</h2>
         <div class="fold-body">
           <p class="tiny" data-i18n="style.lead">一个项目只有一个风格锚点。写出提示词 → 出草稿 → 采用入库后定调，之后不可再改。然后再做地图、英雄或立绘。</p>
           <label><span data-i18n="style.notes">备注</span>
             <textarea id="styleNotes" rows="3" placeholder="可空。例如：再硬一点的描边，身形接近死神 vs 火影，不要 Q 版。" data-i18n-placeholder="style.notesPlaceholder"></textarea>
           </label>
           <div class="actions split">
-            <button id="styleInferBtn" class="primary" type="button">① 写出生图提示词</button>
-            <button id="styleGenBtn" type="button" disabled>② 按提示词出图</button>
+            <button id="styleInferBtn" class="primary" type="button" data-i18n="style.infer">① 写出生图提示词</button>
+            <button id="styleGenBtn" type="button" disabled data-i18n="style.generate">② 按提示词出图</button>
           </div>
           <label class="file">
             <span data-i18n="style.upload">或上传已有风格图</span>
             <input id="styleUpload" type="file" accept="image/png,image/jpeg,image/webp" />
           </label>
-          <label>生图提示词 <span data-i18n="style.promptEditable">可改</span>
+          <label><span data-i18n="style.prompt">生图提示词</span> <span data-i18n="style.promptEditable">可改</span>
             <textarea id="stylePrompt" rows="8" placeholder="点「① 写出生图提示词」之后，英文提示词会出现在这里。" data-i18n-placeholder="style.promptPlaceholder"></textarea>
           </label>
           <p class="lock" id="styleLock"></p>
@@ -185,7 +185,7 @@
         <h2 data-i18n="stages.title">地图简报</h2>
         <div class="fold-body">
           <p class="tiny" data-i18n="stages.lead">已打开某张地图时，「写出提示词」会改这一张，不会另开条目。要全新地点请先点「新建地图」。可站立的平地和高台必须画在同一侧视图层（台阶断面），不要 3/4 透视把高台画到背景里。</p>
-          <label>描述 <span>必填</span>
+          <label><span data-i18n="stages.description">描述</span> <span data-i18n="stages.required">必填</span>
             <textarea id="stageDescription" rows="3" placeholder="例如：始皇陵兵马俑坑，深赭陶俑阵列，远处墓门与冷月。" data-i18n-placeholder="stages.descriptionPlaceholder"></textarea>
           </label>
           <label><span data-i18n="stages.keywords">关键词</span>
@@ -206,11 +206,11 @@
             </select>
           </label>
           <div class="actions split">
-            <button id="newStageBtn" type="button">新建地图</button>
-            <button id="stageInferBtn" class="primary" type="button">① 写出生图提示词</button>
+            <button id="newStageBtn" type="button" data-i18n="stages.new">新建地图</button>
+            <button id="stageInferBtn" class="primary" type="button" data-i18n="stages.infer">① 写出生图提示词</button>
           </div>
           <div class="actions split">
-            <button id="stageGenBtn" type="button" disabled>② 按提示词出图</button>
+            <button id="stageGenBtn" type="button" disabled data-i18n="stages.generate">② 按提示词出图</button>
             <button id="deleteStageBtn" class="danger" type="button" disabled data-i18n="stages.delete">删除这张地图</button>
           </div>
           <div class="actions split">
@@ -224,10 +224,10 @@
           <label>BPM
             <input id="stageBgmBpm" type="number" min="90" max="160" value="118" />
           </label>
-          <label class="checkline"><input id="stageBgmUseImage" type="checkbox" checked /> 参考 stage.png（图生音乐）</label>
+          <label class="checkline"><input id="stageBgmUseImage" type="checkbox" checked /> <span data-i18n="stages.bgmUseImage">参考 stage.png（图生音乐）</span></label>
           <audio id="stageBgmPreview" controls style="width:100%;margin-top:8px" hidden></audio>
-          <p class="tiny">Lyria 3 Clip · 需要 AI Studio Key 及模型权限；Express 暂不提供此接口。30 秒纯器乐循环，偏格斗压迫感（少欢快旋律）。读取 visual 与可选地图图，入库后写入 <code>stage.json</code> 的 <code>bgm</code>，对战端自动循环。</p>
-          <p class="tiny">删除会清掉工坊设定、草稿，以及已入库的 <code>assets/game/stages/</code>。试玩端下一场对战不再出现这张图。</p>
+          <p class="tiny" data-i18n="stages.bgmHint" data-i18n-html="1">Lyria 3 Clip · 需要 AI Studio Key 及模型权限；Express 暂不提供此接口。30 秒纯器乐循环，偏格斗压迫感（少欢快旋律）。读取 visual 与可选地图图，入库后写入 <code>stage.json</code> 的 <code>bgm</code>，对战端自动循环。</p>
+          <p class="tiny" data-i18n="stages.deleteHint" data-i18n-html="1">删除会清掉工坊设定、草稿，以及已入库的 <code>assets/game/stages/</code>。试玩端下一场对战不再出现这张图。</p>
         </div>
       </section>
 
@@ -274,9 +274,9 @@
         <h2 data-i18n="heroes.title">英雄简报</h2>
         <div class="fold-body">
           <div class="actions split">
-            <button id="newHeroBtn" class="primary" type="button">新建英雄</button>
+            <button id="newHeroBtn" class="primary" type="button" data-i18n="heroes.new">新建英雄</button>
           </div>
-          <label>人物形象 <span>必填</span>
+          <label><span data-i18n="heroes.appearance">人物形象</span> <span data-i18n="heroes.required">必填</span>
             <textarea id="appearance" rows="3" placeholder="例如：年轻的努尔哈赤，貂皮暖帽，野猪皮十三副甲，身形结实，侧视剪影能认出八旗统帅。" data-i18n-placeholder="heroes.appearancePlaceholder"></textarea>
           </label>
           <label class="file">
@@ -284,14 +284,14 @@
             <input id="heroRefUpload" type="file" accept="image/png,image/jpeg,image/webp" />
           </label>
           <div id="heroRefPreview" class="ref-photo" hidden>
-            <img id="heroRefImg" alt="参考图预览" />
+            <img id="heroRefImg" alt="参考图预览" data-i18n-aria-label="heroes.refAlt" />
             <button type="button" id="heroRefClear" class="danger" data-i18n="heroes.refClear">清除参考图</button>
           </div>
           <p class="tiny" data-i18n="heroes.refHint">画得不像时，上传正面/半身真人照片。生成「人物三视图」会按脸与体态对齐成像素角色；服装仍听形象文字。之后动作条自动跟三视图，不必每槽再贴照片。</p>
           <label><span data-i18n="heroes.gear">人物武器配饰</span>
             <textarea id="gear" rows="2" placeholder="例如：腰刀、牛角弓、八旗小旗、甲片与皮毛边。" data-i18n-placeholder="heroes.gearPlaceholder"></textarea>
           </label>
-          <label>技能机制 <span>必填</span>
+          <label><span data-i18n="heroes.kit">技能机制</span> <span data-i18n="heroes.required">必填</span>
             <textarea id="kitBrief" rows="3" placeholder="例如：地面普攻横斩；上+普攻站地朝上挑；下+普攻半空下劈；小技能朝前施法；上+技能地面对空；下+技能空中对地；奥义召铁骑。" data-i18n-placeholder="heroes.kitPlaceholder"></textarea>
           </label>
           <p class="tiny" data-i18n="heroes.lead">只填这三项。系统会推理关键帧提示词（动作 + 弹道 fx_*）和 moves 数值。先单独生成并采用入库三视图，再一键生成其余套图（同时 3 张）。出图后先切分播放确认，再入库；切分不会写入游戏。原图会留着，可换一种切法而不重新生图。出图在后台跑，等待时可切换去做另一个英雄或地图。</p>
@@ -310,14 +310,14 @@
           <div class="actions split">
             <button id="deleteHeroBtn" class="danger" type="button" data-i18n="heroes.delete">删除这份草稿</button>
           </div>
-          <p class="tiny">「采用入库」只写入<strong>当前工坊工程</strong>的成品目录，不会热更新你正在跑的对战进程。发给对战端请用「导出数据包」。风格锚点必须先入库。三视图确定后才能批量出动作条。</p>
+          <p class="tiny" data-i18n="heroes.commitHint" data-i18n-html="1">「采用入库」只写入<strong>当前工坊工程</strong>的成品目录，不会热更新你正在跑的对战进程。发给对战端请用「导出数据包」。风格锚点必须先入库。三视图确定后才能批量出动作条。</p>
         </div>
       </section>
 
       <section class="fold open" data-rail="heroes" hidden>
         <h2 data-i18n="voice.title">台词与配音</h2>
         <div class="fold-body">
-          <p class="tiny">默认走 Gemini-TTS。游戏只播六句：选人浏览、出场、受击（短促）、奥义、胜利、战败。普攻与技能不配音。开播后会完整念完。点「生成并入库」才写入 <code>assets/game/</code>。</p>
+          <p class="tiny" data-i18n="voice.lead" data-i18n-html="1">默认走 Gemini-TTS。游戏只播六句：选人浏览、出场、受击（短促）、奥义、胜利、战败。普攻与技能不配音。开播后会完整念完。点「生成并入库」才写入 <code>assets/game/</code>。</p>
           <label><span data-i18n="voice.persona">声线性格</span>
             <textarea id="voicePersona" rows="2" placeholder="例如：年轻帝王，短句，文言夹白话，怒时压低再爆。" data-i18n-placeholder="voice.personaPlaceholder"></textarea>
           </label>
@@ -360,10 +360,10 @@
             <select id="ttsVoice"></select>
           </label>
           <div class="voice-sliders" id="ttsSliders">
-            <label>语速 <span id="ttsRateVal">1.00</span>
+            <label><span data-i18n="voice.rate">语速</span> <span id="ttsRateVal">1.00</span>
               <input id="ttsRate" type="range" min="0.7" max="1.25" step="0.05" value="1" />
             </label>
-            <label>音高 <span id="ttsPitchVal">0</span>
+            <label><span data-i18n="voice.pitch">音高</span> <span id="ttsPitchVal">0</span>
               <input id="ttsPitch" type="range" min="-8" max="8" step="1" value="0" />
             </label>
           </div>
@@ -394,22 +394,22 @@
       <section class="fold open" data-rail="style">
         <h2 data-i18n="pipeline.title">流水线</h2>
         <ol class="pipeline">
-          <li><b>风格锚点</b>锁全作像素语言</li>
-          <li><b data-i18n="menubar.tab.stages">地图库</b>入库可复用舞台</li>
-          <li><b data-i18n="menubar.tab.heroes">英雄套图</b>三视图 → 动作 → CG → 台词</li>
-          <li><b>立绘/桌宠</b>三视图 → 动作条 → 去青导出透明帧</li>
+          <li data-i18n="pipeline.style" data-i18n-html="1"><b>风格锚点</b>锁全作像素语言</li>
+          <li data-i18n="pipeline.stages" data-i18n-html="1"><b>地图库</b>入库可复用舞台</li>
+          <li data-i18n="pipeline.heroes" data-i18n-html="1"><b>英雄套图</b>三视图 → 动作 → CG → 台词</li>
+          <li data-i18n="pipeline.portraits" data-i18n-html="1"><b>立绘/桌宠</b>三视图 → 动作条 → 去青导出透明帧</li>
         </ol>
-        <p class="tiny">草稿在 <code>assets/studio/drafts/</code>。「采用入库」写入当前工程的 <code>assets/game/</code>。交给对战端请「导出数据包」，对战用 <code>--import</code> 或把 zip 放进 <code>game/incoming/</code>。</p>
+        <p class="tiny" data-i18n="pipeline.hint" data-i18n-html="1">草稿在 <code>assets/studio/drafts/</code>。「采用入库」写入当前工程的 <code>assets/game/</code>。交给对战端请「导出数据包」，对战用 <code>--import</code> 或把 zip 放进 <code>game/incoming/</code>。</p>
       </section>
 
       <section class="fold open" data-rail="stages" hidden>
         <h2 data-i18n="stages.listTitle">已有地图</h2>
         <div class="fold-body">
           <div class="actions">
-            <button id="newStageListBtn" type="button">新建地图</button>
+            <button id="newStageListBtn" type="button" data-i18n="stages.listNew">新建地图</button>
             <button id="exportAllStagesPackBtn" type="button" title="导出本工程全部已入库地图" data-i18n-title="stages.exportAllTitle" data-i18n="stages.exportAll">导出全部地图包</button>
           </div>
-          <div id="stageList" class="asset-list">暂无</div>
+          <div id="stageList" class="asset-list" data-i18n="stages.listEmpty">暂无</div>
         </div>
       </section>
 
@@ -426,10 +426,10 @@
         <h2 data-i18n="heroes.listTitle">已有英雄</h2>
         <div class="fold-body">
           <div class="actions">
-            <button id="newHeroListBtn" type="button">新建英雄</button>
+            <button id="newHeroListBtn" type="button" data-i18n="heroes.listNew">新建英雄</button>
             <button id="exportAllHeroesPackBtn" type="button" title="导出本工程全部已入库英雄" data-i18n-title="heroes.exportAllTitle" data-i18n="heroes.exportAll">导出全部英雄包</button>
           </div>
-          <div id="heroList" class="asset-list">暂无</div>
+          <div id="heroList" class="asset-list" data-i18n="heroes.listEmpty">暂无</div>
         </div>
       </section>
 
@@ -440,7 +440,7 @@
             <button id="newPortraitListBtn" type="button" data-i18n="portraits.listNew">新建立绘</button>
             <button id="deletePortraitListBtn" class="danger" type="button" disabled title="删除当前打开的立绘（含草稿与导出）" data-i18n-title="portraits.listDeleteTitle" data-i18n="portraits.listDelete">删除当前立绘</button>
           </div>
-          <div id="portraitList" class="asset-list">暂无</div>
+          <div id="portraitList" class="asset-list" data-i18n="portraits.listEmpty">暂无</div>
           <p class="tiny" data-i18n="portraits.listHint">每项右侧「删」可删对应立绘。流水线：锁风格 → 形象/配饰 → 写出提示词 → 先三视图再其他动作 → 切分 → 去青导出。</p>
         </div>
       </section>
@@ -454,17 +454,17 @@
   </footer>
 
   <dialog id="previewDlg">
-    <img id="previewImg" alt="预览" />
-    <form method="dialog"><button type="submit">关闭</button></form>
+    <img id="previewImg" alt="预览" data-i18n-aria-label="common.preview" />
+    <form method="dialog"><button type="submit" data-i18n="bodyScale.close">关闭</button></form>
   </dialog>
 
   <dialog id="bodyScaleDlg" class="body-scale-dlg">
     <div class="body-scale-head">
       <div>
-        <strong id="bodyScaleTitle">身长校对工作区</strong>
+        <strong id="bodyScaleTitle" data-i18n="bodyScale.title">身长校对工作区</strong>
         <p class="tiny" id="bodyScaleMeta"></p>
       </div>
-      <button id="bodyScaleClose" type="button">关闭</button>
+      <button id="bodyScaleClose" type="button" data-i18n="bodyScale.close">关闭</button>
     </div>
     <div class="body-scale-nav">
       <button id="bodyScalePrev" type="button" data-i18n="bodyScale.prev">上一套</button>
@@ -492,13 +492,13 @@
       <div class="body-scale-frames" id="bodyScaleFrames"></div>
       <aside class="body-scale-play" id="bodyScalePlay">
         <div class="body-scale-play-head">
-          <span>动图预览</span>
+          <span data-i18n="bodyScale.playPreview">动图预览</span>
           <label class="tiny"><span data-i18n="bodyScale.fps">帧率</span>
             <input id="bodyScaleFps" type="number" min="4" max="16" value="8" />
           </label>
         </div>
         <div class="body-scale-play-bay" id="bodyScalePlayBay">
-          <img id="bodyScalePlayImg" alt="动图预览" />
+          <img id="bodyScalePlayImg" alt="动图预览" data-i18n-aria-label="bodyScale.playAlt" />
           <div class="body-scale-play-guides" aria-hidden="true">
             <div class="g-feet"><span data-i18n="bodyScale.feet">脚</span></div>
             <div class="g-head" id="bodyScalePlayHead"><span data-i18n="bodyScale.head">头</span></div>
@@ -550,7 +550,7 @@
         <strong data-i18n="selectCrop.title">裁剪选人头像</strong>
         <p class="tiny" data-i18n="selectCrop.lead">中间方框大小固定。拖动底图移动，滚轮或滑杆缩放底图；入库仍是 128×128。</p>
       </div>
-      <button id="selectCropClose" type="button">关闭</button>
+      <button id="selectCropClose" type="button" data-i18n="bodyScale.close">关闭</button>
     </div>
     <div class="select-crop-toolbar">
       <label><span data-i18n="selectCrop.source">底图</span>
@@ -564,7 +564,7 @@
     </div>
     <div class="select-crop-body">
       <div class="select-crop-stage" id="selectCropStage">
-        <img id="selectCropImg" alt="裁剪底图" draggable="false" />
+        <img id="selectCropImg" alt="裁剪底图" draggable="false" data-i18n-aria-label="selectCrop.source" />
         <div class="select-crop-veil" aria-hidden="true"></div>
         <div class="select-crop-box" id="selectCropBox"></div>
       </div>
@@ -575,7 +575,7 @@
         </div>
         <p class="tiny" id="selectCropHint" data-i18n="selectCrop.hint">方框锁定，只挪/缩放图片，各英雄脸在卡上大小更接近。</p>
         <div class="select-crop-actions">
-          <button id="selectCropCancel" type="button">取消</button>
+          <button id="selectCropCancel" type="button" data-i18n="common.cancel">取消</button>
           <button id="selectCropApply" class="primary" type="button" data-i18n="selectCrop.apply">确认裁剪并写入</button>
         </div>
       </aside>
@@ -583,10 +583,10 @@
   </dialog>
 
   <dialog id="projectDlg" class="project-dlg">
-    <div class="project-dlg-head">切换项目</div>
+    <div class="project-dlg-head" data-i18n="projectDlg.title">切换项目</div>
     <div class="project-dlg-body">
       <p class="tiny" id="projectDlgNow"></p>
-      <label>别名
+      <label><span data-i18n="projectDlg.alias">别名</span>
         <span class="path-row">
           <input id="projectAlias" placeholder="例如：英灵大乱斗。新建不填则用文件夹名" autocomplete="off" data-i18n-placeholder="projectDlg.aliasPlaceholder" />
           <button id="projectRenameBtn" type="button" data-i18n="projectDlg.rename">保存别名</button>
@@ -596,8 +596,8 @@
       <div id="projectRecent" class="project-recent"></div>
     </div>
     <div class="project-dlg-foot">
-      <button id="projectUseBtn" class="primary" type="button">选择文件夹…</button>
-      <button id="projectDlgClose" type="button">取消</button>
+      <button id="projectUseBtn" class="primary" type="button" data-i18n="projectGate.browse">选择文件夹…</button>
+      <button id="projectDlgClose" type="button" data-i18n="common.cancel">取消</button>
     </div>
   </dialog>
 
@@ -610,9 +610,9 @@
         el.onerror = reject;
         document.body.append(el);
       });
-      load("/static/i18n.js?v=2")
+      load("/static/i18n.js?v=3")
         .then(() => window.StudioI18n.loadCatalogs(window.StudioI18n.readStored()))
-        .then(() => load("/static/app.js?v=104"))
+        .then(() => load("/static/app.js?v=105"))
         .catch((err) => console.error(err));
     }
   </script>
