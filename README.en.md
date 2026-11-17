@@ -17,7 +17,7 @@ Auth is **API Key only** — no Google Cloud CLI, GCP project ID, or ADC login. 
 
 ## macOS client (beta)
 
-Download from the [GitHub pre-release page](https://github.com/jayson-sheyue/herogame-studio/releases/tag/v0.1.0-beta.6). Apple Silicon (M-series) / macOS 15+: open `HeroGameStudio-0.1.0-beta.6-macOS-arm64.dmg`, drag **Art Studio.app** into **Applications**, then launch. Python, dependencies, and the local service are bundled — no Python, Node, or gcloud install, and no terminal left open. Pick a product line and project folder, then enter your key in **API Key settings**. Switch **Interface language** there when you want English.
+Download from the [GitHub pre-release page](https://github.com/jayson-sheyue/herogame-studio/releases/tag/v0.1.0-beta.7). Apple Silicon (M-series) / macOS 15+: open `HeroGameStudio-0.1.0-beta.7-macOS-arm64.dmg`, drag **Art Studio.app** into **Applications**, then launch. Python, dependencies, and the local service are bundled — no Python, Node, or gcloud install, and no terminal left open. Pick a product line and project folder, then enter your key in **API Key settings**. Switch **Interface language** there when you want English.
 
 The client uses native macOS windows plus folder/save dialogs. Closing the window quits; busy tasks or unsaved edits are confirmed first. Cancelled downloads do not show as saved. Quitting stops only the service this app started.
 

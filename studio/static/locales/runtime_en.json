@@ -634,5 +634,6 @@
   "5 帧挥手打招呼。": "5-frame wave / hello.",
   "导出目录：当前工程 <code>assets/studio/exports/portraits/{id}/</code>": "Export folder: current project <code>assets/studio/exports/portraits/{id}/</code>",
   "生成尚未出草稿的 {n} 个动作（跳过三视图）": "Generate {n} actions that still lack drafts (skips turnaround)",
-  "② 生成其余 {n} 个动作": "② Generate remaining {n} actions"
+  "② 生成其余 {n} 个动作": "② Generate remaining {n} actions",
+  "还没有本产品线的工程。点下方选择空文件夹即可新建。": "No projects for this product line yet. Choose an empty folder below to create one."
 }

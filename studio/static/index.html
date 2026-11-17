@@ -35,16 +35,16 @@
     <h1 id="fileLaunchTitle" data-i18n="launch.title">请从本机服务进入工坊</h1>
     <p data-i18n="launch.body">你打开了网页源文件。工坊需要本机服务来读取工程、保存作品和连接 AI 服务。</p>
     <ol>
-      <li>在项目根目录双击 <code>start.command</code>（macOS），等待浏览器自动打开。</li>
-      <li>使用期间保持启动终端开启；结束时按 <code>Ctrl+C</code>。</li>
+      <li data-i18n="launch.step1" data-i18n-html="1">在项目根目录双击 <code>start.command</code>（macOS），等待浏览器自动打开。</li>
+      <li data-i18n="launch.step2" data-i18n-html="1">使用期间保持启动终端开启；结束时按 <code>Ctrl+C</code>。</li>
     </ol>
     <a class="launch-link" href="http://127.0.0.1:8787/" data-i18n="launch.openLink">打开本机工坊 ↗</a>
-    <p class="launch-note">上面的按钮适用于服务已启动时。首次使用请先按项目 README 安装依赖；Windows / Linux 可在已激活虚拟环境的终端运行 <code>python launch.py</code>（位于 studio 目录）。</p>
+    <p class="launch-note" data-i18n="launch.note" data-i18n-html="1">上面的按钮适用于服务已启动时。首次使用请先按项目 README 安装依赖；Windows / Linux 可在已激活虚拟环境的终端运行 <code>python launch.py</code>（位于 studio 目录）。</p>
   </section>
   <div id="lineGate" class="line-gate" hidden>
     <div class="line-gate-card">
-      <h1><img class="gate-mark" src="/static/brand-icon.svg?v=1" width="48" height="48" alt="" aria-hidden="true" />作图工坊</h1>
-      <p class="line-gate-lead">先选产品线。对战游戏与桌宠立绘使用<strong>不同工程</strong>，互不混用。</p>
+      <h1><img class="gate-mark" src="/static/brand-icon.svg?v=1" width="48" height="48" alt="" aria-hidden="true" /><span data-i18n="lineGate.brand">作图工坊</span></h1>
+      <p class="line-gate-lead" data-i18n="lineGate.lead" data-i18n-html="1">先选产品线。对战游戏与桌宠立绘使用<strong>不同工程</strong>，互不混用。</p>
       <div class="line-gate-choices">
         <button type="button" class="line-choice" data-pick-line="herogame">
           <b data-i18n="lineGate.herogame.title">对战游戏资产</b>
@@ -55,7 +55,7 @@
           <span data-i18n="lineGate.deskpet.desc">风格锚点 · 动作清单 · 去青导出透明帧</span>
         </button>
       </div>
-      <p class="tiny">API Key / 服务来源 / 模型按<strong>产品线分别记忆</strong>。工程文件夹与资产目录完全隔离。</p>
+      <p class="tiny" data-i18n="lineGate.hint" data-i18n-html="1">API Key / 服务来源 / 模型按<strong>产品线分别记忆</strong>。工程文件夹与资产目录完全隔离。</p>
     </div>
   </div>
 
@@ -65,7 +65,7 @@
       <p class="tiny" id="projectGateLead" data-i18n="projectGate.lead">新建空文件夹，或打开已有本产品线工程。</p>
       <div id="projectGateList" class="project-recent"></div>
       <div class="actions split">
-        <button id="projectGateBrowseBtn" class="primary" type="button">选择文件夹…</button>
+        <button id="projectGateBrowseBtn" class="primary" type="button" data-i18n="projectGate.browse">选择文件夹…</button>
         <button id="projectGateBackBtn" type="button" data-i18n="projectGate.back">返回产品线</button>
       </div>
       <label class="gate-alias"><span data-i18n="projectGate.alias">别名（新建时可选）</span>

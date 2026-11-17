@@ -884,7 +884,7 @@ function showProjectGate(show) {
     document.body.dataset.gate = "1";
     $("lineGate") && ($("lineGate").hidden = true);
     const label = state.line === "deskpet" ? t("桌宠/立绘") : t("对战游戏");
-    if ($("projectGateTitle")) $("projectGateTitle").textContent = `选择「${label}」工程`;
+    if ($("projectGateTitle")) $("projectGateTitle").textContent = t("选择「{label}」工程", { label });
     if ($("projectGateLead")) {
       $("projectGateLead").textContent =
         t("打开已有工程，或选一个空文件夹新建。工程 kind 会写入文件夹，不会与另一条产品线混用。");
@@ -911,7 +911,7 @@ function renderProjectGateList() {
   const box = $("projectGateList");
   if (!box) return;
   if (!state.projects.length) {
-    box.innerHTML = `<p class="tiny">还没有本产品线的工程。点下方选择空文件夹即可新建。</p>`;
+    box.innerHTML = `<p class="tiny">${t("还没有本产品线的工程。点下方选择空文件夹即可新建。")}</p>`;
     return;
   }
   box.innerHTML = state.projects

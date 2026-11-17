@@ -1,6 +1,6 @@
 # macOS 桌面客户端
 
-定位：个人／小范围手动分发，无 OTA；当前测试版 `0.1.0-beta.6`（构建号 `6`），Apple Silicon、macOS 15+。原生 AppKit + WKWebView 窗口，PyInstaller onedir 携带 Python 服务及依赖；系统 WebKit 无需额外下载。壳层菜单、对话框与启动提示为中英双语（默认中文；网页可经 `herogame.studio.locale` 切换并写入 `uiLocale`）。
+定位：个人／小范围手动分发，无 OTA；当前测试版 `0.1.0-beta.7`（构建号 `7`），Apple Silicon、macOS 15+。原生 AppKit + WKWebView 窗口，PyInstaller onedir 携带 Python 服务及依赖；系统 WebKit 无需额外下载。壳层菜单、对话框与启动提示为中英双语（默认中文；网页可经 `herogame.studio.locale` 切换并写入 `uiLocale`）。
 
 ## 构建
 
@@ -22,7 +22,7 @@ PyInstaller 随附的 certifi/gRPC 公共信任根经 X.509 解析验证后，�
 studio/.venv/bin/python desktop/smoke.py 'build/macos/作图工坊.app/Contents/Resources/backend/studio-service'
 'build/macos/作图工坊.app/Contents/Resources/backend/studio-service' --self-check
 codesign --verify --deep --strict 'build/macos/作图工坊.app'
-hdiutil verify dist/HeroGameStudio-0.1.0-beta.6-macOS-arm64.dmg
+hdiutil verify dist/HeroGameStudio-0.1.0-beta.7-macOS-arm64.dmg
 studio/.venv/bin/python desktop/smoke.py 'build/macos/作图工坊.app/Contents/Resources/backend/studio-service' --upgrade-from '/绝对路径/旧版.app/Contents/Resources/backend/studio-service'
 ```
 
