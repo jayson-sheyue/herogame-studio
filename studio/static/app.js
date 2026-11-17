@@ -64,6 +64,15 @@ async function setUiLocale(locale) {
   try { if (typeof renderStageList === "function") renderStageList(); } catch {}
   try { if (typeof refreshActionLocks === "function") refreshActionLocks(); } catch {}
   try { if (typeof renderVoice === "function") renderVoice(); } catch {}
+  try {
+    const pid = typeof currentPortraitId === "function" ? currentPortraitId() : state.portrait?.portrait_id;
+    if (pid && $("portraitExportHint")) {
+      $("portraitExportHint").innerHTML = t(
+        "导出目录：当前工程 <code>assets/studio/exports/portraits/{id}/</code>",
+        { id: escapeHtml(pid) }
+      );
+    }
+  } catch {}
   setStatus(t("界面语言已切换。"), "ok");
 }
 
@@ -184,7 +193,7 @@ function renderKeyHealth(v = {}) {
   const label = v.resolved_provider === "vertex" ? "Vertex Express" : "Google AI Studio";
   el.textContent = v.api_key_set
     ? t("{label} · Key 已设置（连接状态见测试结果）", { label })
-    : (v.error || t("请先设置本产品线 API Key"));
+    : t(v.error || "请先设置本产品线 API Key");
 }
 
 function loadVertexForCurrentLine(health = {}) {
@@ -727,11 +736,11 @@ function refreshActionLocks() {
     $("portraitGenAllBtn").title = !hasTa
       ? t("请先单独生成并确认「人物三视图」，再一键生成其余动作。")
       : pending.length
-        ? `生成尚未出草稿的 ${pending.length} 个动作（跳过三视图）`
+        ? t("生成尚未出草稿的 {n} 个动作（跳过三视图）", { n: pending.length })
         : t("其余动作都已有草稿；要重出请在卡片上单独点「再出一版」。");
     $("portraitGenAllBtn").textContent =
       pending.length && rest && pending.length < rest
-        ? `② 生成其余 ${pending.length} 个动作`
+        ? t("② 生成其余 {n} 个动作", { n: pending.length })
         : t("② 生成全部动作");
   }
   if ($("portraitExportAllBtn")) {
@@ -814,7 +823,10 @@ function applyWorkspace(data = {}) {
   else state.needsGate = !state.line;
   document.body.dataset.line = state.line || "";
   const now = $("projectNow");
-  const label = ws.line_label || (state.line === "deskpet" ? t("桌宠/立绘") : state.line === "herogame" ? t("对战游戏") : "");
+  const rawLabel =
+    ws.line_label ||
+    (state.line === "deskpet" ? "桌宠/立绘" : state.line === "herogame" ? "对战游戏" : "");
+  const label = rawLabel ? t(rawLabel) : "";
   if (now) {
     now.textContent = ws.root
       ? t("当前：{name} · {label} · {path}", { name: ws.name || t("未命名"), label, path: ws.root })
@@ -930,10 +942,10 @@ async function pickProductLine(kind) {
   if (data.has_project && data.workspace?.root) {
     enterWorkspaceShell();
     await afterProjectReady(data);
-    setStatus(t("已进入「{where}」· {name}", { where: data.line_label || kind, name: data.workspace.name }), "ok");
+    setStatus(t("已进入「{where}」· {name}", { where: t(data.line_label || kind), name: data.workspace.name }), "ok");
   } else {
     showProjectGate(true);
-    setStatus(t("已选择「{where}」。请新建或打开工程。", { where: data.line_label || kind }), "", { toast: false });
+    setStatus(t("已选择「{where}」。请新建或打开工程。", { where: t(data.line_label || kind) }), "", { toast: false });
   }
 }
 
@@ -2883,22 +2895,49 @@ function currentPortraitId() {
   return state.portrait?.portrait_id || "";
 }
 
+/** Canonical Chinese titles for built-in portrait slots (catalog keys). */
+const PORTRAIT_SLOT_TITLE_ZH = {
+  turnaround: "人物三视图",
+  idle: "待机呼吸",
+  walk: "走动",
+  happy: "开心",
+  sad: "沮丧",
+  sleep: "睡觉",
+  wave: "挥手",
+};
+
+function portraitSlotTitle(slotOrId, fallbackTitle) {
+  const id = typeof slotOrId === "string" ? slotOrId : slotOrId?.id;
+  const title =
+    fallbackTitle ??
+    (typeof slotOrId === "object" && slotOrId ? slotOrId.title : "") ??
+    "";
+  if (title && /[\u4e00-\u9fff]/.test(String(title))) return t(String(title));
+  if (id && PORTRAIT_SLOT_TITLE_ZH[id]) return t(PORTRAIT_SLOT_TITLE_ZH[id]);
+  return String(title || id || "");
+}
+
+function portraitSlotHint(slot) {
+  const hint = slot?.hint || "";
+  return hint ? t(hint) : "";
+}
+
 function defaultPortraitPlan() {
   const presets = state.portraitSlotPresets?.length
     ? state.portraitSlotPresets
     : [
-        { id: "turnaround", title: t("人物三视图"), frames: 4 },
-        { id: "idle", title: t("待机呼吸"), frames: 5 },
-        { id: "walk", title: t("走动"), frames: 5 },
-        { id: "happy", title: t("开心"), frames: 5 },
-        { id: "sad", title: t("沮丧"), frames: 5 },
-        { id: "sleep", title: t("睡觉"), frames: 5 },
-        { id: "wave", title: t("挥手"), frames: 5 },
+        { id: "turnaround", title: "人物三视图", frames: 4 },
+        { id: "idle", title: "待机呼吸", frames: 5 },
+        { id: "walk", title: "走动", frames: 5 },
+        { id: "happy", title: "开心", frames: 5 },
+        { id: "sad", title: "沮丧", frames: 5 },
+        { id: "sleep", title: "睡觉", frames: 5 },
+        { id: "wave", title: "挥手", frames: 5 },
       ];
   const on = new Set(state.portraitDefaultPlanIds || ["turnaround", "idle", "walk"]);
   return presets.map((s) => ({
     id: s.id,
-    title: s.title || s.id,
+    title: s.title || PORTRAIT_SLOT_TITLE_ZH[s.id] || s.id,
     frames: s.id === "turnaround" ? 4 : Number(s.frames || 5),
     on: on.has(s.id),
   }));
@@ -2941,7 +2980,18 @@ function readPortraitPlanFromPicker() {
   const rows = [...box.querySelectorAll("[data-plan-id]")];
   const plan = rows.map((row) => {
     const id = row.getAttribute("data-plan-id");
-    const title = row.querySelector("[data-plan-title]")?.value?.trim() || id;
+    const typed = row.querySelector("[data-plan-title]")?.value?.trim() || id;
+    const preset = state.portraitSlotPresets?.find((s) => s.id === id);
+    // Keep canonical Chinese titles for built-in slots when the field only shows localized UI copy.
+    let title = typed;
+    if (preset) {
+      const canonical = preset.title || PORTRAIT_SLOT_TITLE_ZH[id] || id;
+      if (typed === portraitSlotTitle({ id, title: canonical }) || typed === canonical) {
+        title = canonical;
+      }
+    } else if (PORTRAIT_SLOT_TITLE_ZH[id] && typed === t(PORTRAIT_SLOT_TITLE_ZH[id])) {
+      title = PORTRAIT_SLOT_TITLE_ZH[id];
+    }
     let frames = Number(row.querySelector("[data-plan-frames]")?.value || 5);
     if (id === "turnaround") frames = 4;
     else frames = Math.max(2, Math.min(8, frames || 5));
@@ -2959,11 +3009,12 @@ function renderPortraitSlotPicker() {
   box.innerHTML = state.portraitPlan
     .map((p) => {
       const locked = p.id === "turnaround";
+      const displayTitle = portraitSlotTitle(p);
       return `<label class="portrait-slot-row" data-plan-id="${escapeHtml(p.id)}">
         <input type="checkbox" data-plan-on ${p.on ? "checked" : ""} />
-        <input type="text" data-plan-title value="${escapeHtml(p.title)}" ${locked ? "readonly" : ""} />
-        <input type="number" data-plan-frames min="2" max="8" value="${locked ? 4 : p.frames}" ${locked ? "disabled" : ""} title="帧数" />
-        <span class="tiny">${locked ? t("必选锁外形") : "帧"}</span>
+        <input type="text" data-plan-title value="${escapeHtml(displayTitle)}" ${locked ? "readonly" : ""} />
+        <input type="number" data-plan-frames min="2" max="8" value="${locked ? 4 : p.frames}" ${locked ? "disabled" : ""} title="${t("帧数")}" />
+        <span class="tiny">${locked ? t("必选锁外形") : t("帧")}</span>
         ${
           !state.portraitSlotPresets?.some((s) => s.id === p.id)
             ? `<button type="button" class="asset-del" data-plan-remove="${escapeHtml(p.id)}" title="${t("移除")}">${t("删")}</button>`
@@ -3000,7 +3051,7 @@ function addCustomPortraitSlot() {
   state.portraitPlan.push({ id, title, frames, on: true });
   if ($("portraitCustomSlotTitle")) $("portraitCustomSlotTitle").value = "";
   renderPortraitSlotPicker();
-  setStatus(`已添加套图「${title}」· ${frames} 帧。`, "ok");
+  setStatus(t("已添加套图「{title}」· {frames} 帧。", { title, frames }), "ok");
 }
 
 function applyPortraitPayload(data, { soft = false, activate = false } = {}) {
@@ -3029,8 +3080,10 @@ function applyPortraitPayload(data, { soft = false, activate = false } = {}) {
     }
     if ($("portraitGear") && data.gear != null) $("portraitGear").value = data.gear || "";
     if ($("portraitExportHint") && data.portrait_id) {
-      $("portraitExportHint").innerHTML =
-        `导出目录：当前工程 <code>assets/studio/exports/portraits/${escapeHtml(data.portrait_id)}/</code>`;
+      $("portraitExportHint").innerHTML = t(
+        "导出目录：当前工程 <code>assets/studio/exports/portraits/{id}/</code>",
+        { id: escapeHtml(data.portrait_id) }
+      );
     }
     renderPortraitBoard();
     renderPortraitList();
@@ -3146,7 +3199,7 @@ async function revealPortraitFolder(slotId = "") {
       method: "POST",
       body: JSON.stringify({ portrait_id: pid, slot_id: slotId || "" }),
     });
-    setStatus(`已打开：${data.path || t("导出目录")}`, "ok");
+    setStatus(t("已打开：{path}", { path: data.path || t("导出目录") }), "ok");
   } catch (err) {
     setStatus(err.message || String(err), "bad");
   }
@@ -3169,40 +3222,45 @@ function portraitCardHtml(slot) {
   const nextSplitVariant = ((Number(asset.split_variant || 0) + 1) % splitVariants) + 1;
   const showFrames = frameUrls.length > 0 && !asset.frames_stale;
   const playing = playback.kind === "portrait" && playback.slotId === slot.id && playback.timer;
+  const slotTitle = portraitSlotTitle(slot);
   const thumbInner = showFrames
     ? frameUrls
         .map(
           (u, i) =>
-            `<button type="button" class="split-preview" data-preview-src="${u}"><b>${i + 1}</b><img src="${u}" alt="帧 ${i + 1}" loading="lazy" decoding="async" /></button>`
+            `<button type="button" class="split-preview" data-preview-src="${u}"><b>${i + 1}</b><img src="${u}" alt="${escapeHtml(t("帧 {n}", { n: i + 1 }))}" loading="lazy" decoding="async" /></button>`
         )
         .join("")
     : draftUrl
-      ? `<img src="${draftUrl}" alt="${escapeHtml(slot.title || slot.id)}" loading="lazy" decoding="async" data-preview="${draftUrl}" />`
-      : `<span class="ph">尚未生成</span>`;
+      ? `<img src="${draftUrl}" alt="${escapeHtml(slotTitle)}" loading="lazy" decoding="async" data-preview="${draftUrl}" />`
+      : `<span class="ph">${t("尚未生成")}</span>`;
   const badge = exports.length && !asset.exports_stale
-    ? `<span class="badge in">已导出 ${exports.length}</span>`
+    ? `<span class="badge in">${t("已导出 {n}", { n: exports.length })}</span>`
     : draftUrl
-      ? `<span class="badge draft">草稿</span>`
+      ? `<span class="badge draft">${t("草稿")}</span>`
       : "";
   const zh = state.portrait?.prompts_zh?.[slot.id] || "";
   const quality = asset.quality || {};
   const generationRejected = quality.pipeline != null && !quality.passed && !timelineFinal;
   const candidates = asset.candidates || [];
   const qualityNote = quality.pipeline != null
-    ? `<p class="strip-note ${quality.passed ? "is-info" : ""}">质检：${quality.passed ? t("通过") : t("布局不合格，已阻止切分")} · 综合 ${quality.pipeline}/100 · 帧差 ${quality.diversity ?? "—"}${quality.loop_difference != null ? ` · 首尾差 ${quality.loop_difference}` : ""}${candidates.length > 1 ? ` · 保留 ${candidates.length} 个候选` : ""}</p>`
+    ? `<p class="strip-note ${quality.passed ? "is-info" : ""}">${t("质检：{status} · 综合 {pipeline}/100 · 帧差 {diversity}", {
+        status: quality.passed ? t("通过") : t("布局不合格，已阻止切分"),
+        pipeline: quality.pipeline,
+        diversity: quality.diversity ?? "—",
+      })}${quality.loop_difference != null ? t(" · 首尾差 {loop}", { loop: quality.loop_difference }) : ""}${candidates.length > 1 ? t(" · 保留 {n} 个候选", { n: candidates.length }) : ""}</p>`
     : "";
   const candidatePicker = candidates.length > 1
-    ? `<div class="candidate-picker"><small>候选版本（当前为 ${quality.selected || 1}）：</small>${candidates.map((u, i) => `<button type="button" data-portrait-candidate="${slot.id}" data-candidate-index="${i + 1}" class="${Number(quality.selected) === i + 1 ? "on" : ""}" title="采用候选 ${i + 1}"><img src="${u}" alt="候选 ${i + 1}" loading="lazy" />${i + 1}</button>`).join("")}</div>`
+    ? `<div class="candidate-picker"><small>${t("候选版本（当前为 {n}）：", { n: quality.selected || 1 })}</small>${candidates.map((u, i) => `<button type="button" data-portrait-candidate="${slot.id}" data-candidate-index="${i + 1}" class="${Number(quality.selected) === i + 1 ? "on" : ""}" title="${escapeHtml(t("采用候选 {n}", { n: i + 1 }))}"><img src="${u}" alt="${escapeHtml(t("候选 {n}", { n: i + 1 }))}" loading="lazy" />${i + 1}</button>`).join("")}</div>`
     : "";
   const turnaroundLocked = Boolean(state.portrait?.turnaround_locked_at);
   const blueprint = state.portrait?.motion_blueprints?.[slot.id] || {};
   const isMotion = slot.id !== "turnaround";
   const blueprintBox = isMotion
-    ? `<details class="motion-blueprint"><summary>动作蓝图 <small>先定起势、峰值、收势，再生图</small></summary>
-        <label>起势 <input data-portrait-blueprint="${slot.id}" data-blueprint-field="start" value="${escapeHtml(blueprint.start || "")}" placeholder="例如：双脚平站，手垂在身侧" /></label>
-        <label>峰值/接触 <input data-portrait-blueprint="${slot.id}" data-blueprint-field="peak" value="${escapeHtml(blueprint.peak || "")}" placeholder="例如：右手举到肩上，手掌向外" /></label>
-        <label>收势 <input data-portrait-blueprint="${slot.id}" data-blueprint-field="end" value="${escapeHtml(blueprint.end || "")}" placeholder="例如：手落回自然站姿" /></label>
-        <label><input type="checkbox" data-portrait-blueprint="${slot.id}" data-blueprint-field="loop" ${blueprint.loop ? "checked" : ""} /> 首尾应无缝循环</label>
+    ? `<details class="motion-blueprint"><summary>${t("动作蓝图")} <small>${t("先定起势、峰值、收势，再生图")}</small></summary>
+        <label>${t("起势")} <input data-portrait-blueprint="${slot.id}" data-blueprint-field="start" value="${escapeHtml(blueprint.start || "")}" placeholder="${escapeHtml(t("例如：双脚平站，手垂在身侧"))}" /></label>
+        <label>${t("峰值/接触")} <input data-portrait-blueprint="${slot.id}" data-blueprint-field="peak" value="${escapeHtml(blueprint.peak || "")}" placeholder="${escapeHtml(t("例如：右手举到肩上，手掌向外"))}" /></label>
+        <label>${t("收势")} <input data-portrait-blueprint="${slot.id}" data-blueprint-field="end" value="${escapeHtml(blueprint.end || "")}" placeholder="${escapeHtml(t("例如：手落回自然站姿"))}" /></label>
+        <label><input type="checkbox" data-portrait-blueprint="${slot.id}" data-blueprint-field="loop" ${blueprint.loop ? "checked" : ""} /> ${t("首尾应无缝循环")}</label>
       </details>`
     : "";
   const playSrcNote =
@@ -3211,42 +3269,54 @@ function portraitCardHtml(slot) {
       : asset.exports_stale
         ? t("切分预览（导出已过期）")
         : t("切分预览帧");
+  const splitTitle = generationRejected
+    ? t("当前草稿检出的人物/格数不等于设定帧数；请重新生成，系统不会把它切坏。")
+    : timelineFinal
+      ? t("将丢弃当前最终时间线，重置为原始 {n} 帧切分", { n: baseN })
+      : t("切分基础关键帧；切分后可进入身长工作区扩帧和重排");
+  const splitLabel = generationRejected
+    ? t("草稿格数不合格")
+    : timelineFinal
+      ? t("重置为基础 {n} 帧", { n: baseN })
+      : showFrames
+        ? t("换一种切法（{a}/{b}）", { a: nextSplitVariant, b: splitVariants })
+        : t("一键切分（{n} 帧）", { n: baseN });
   return `<article class="card${draftUrl ? " is-draft" : ""}${busy ? " busy" : ""}${playing ? " is-playing" : ""}" data-portrait-slot="${slot.id}">
     <header>
       <div>
-        <b>${escapeHtml(slot.title || slot.id)}${badge}</b>
-        <div><small>${escapeHtml(slot.hint || "")}${timelineFinal ? ` · 已在身长工作区定稿：基础 ${baseN} 帧 → 最终 ${n} 帧` : ""}</small></div>
+        <b>${escapeHtml(slotTitle)}${badge}</b>
+        <div><small>${escapeHtml(portraitSlotHint(slot))}${timelineFinal ? t(" · 已在身长工作区定稿：基础 {base} 帧 → 最终 {final} 帧", { base: baseN, final: n }) : ""}</small></div>
       </div>
-      <small>${escapeHtml(slot.aspect || "21:9")} · ${n} 帧</small>
+      <small>${escapeHtml(slot.aspect || "21:9")} · ${n} ${t("帧")}</small>
     </header>
     <div class="thumb${showFrames ? " is-frames" : ""}"${showFrames || !draftUrl ? "" : ` data-preview="${draftUrl}"`}>
       ${thumbInner}
     </div>
-    ${showFrames ? `<p class="strip-note is-info">这是切分预览，保留青底以便检查格子；点“去青导出”后的播放区/导出 PNG 才是透明底。</p>` : ""}
-    ${canPlay ? `<div class="play-bay" data-play-bay="${slot.id}"><img class="play-stage" alt="帧动画" /><span class="ph">点播放：同一位置循环 ${playUrls.length} 帧（${playSrcNote}）</span></div>` : ""}
-    ${asset.frames_stale && frameUrls.length ? `<p class="strip-note">草稿已更新，请重新切分再播放/导出。</p>` : ""}
-    ${asset.exports_stale && exports.length ? `<p class="strip-note">去青导出已过期（对应旧草稿）。请重新「去青导出」，否则预览仍是旧透明帧。</p>` : ""}
-    ${exports.length && !asset.exports_stale ? `<p class="strip-note is-info">已去青导出 ${exports.length} 帧透明 PNG（不进对战）。</p>` : ""}
+    ${showFrames ? `<p class="strip-note is-info">${t("这是切分预览，保留青底以便检查格子；点“去青导出”后的播放区/导出 PNG 才是透明底。")}</p>` : ""}
+    ${canPlay ? `<div class="play-bay" data-play-bay="${slot.id}"><img class="play-stage" alt="${escapeHtml(t("帧动画"))}" /><span class="ph">${t("点播放：同一位置循环 {n} 帧（{src}）", { n: playUrls.length, src: playSrcNote })}</span></div>` : ""}
+    ${asset.frames_stale && frameUrls.length ? `<p class="strip-note">${t("草稿已更新，请重新切分再播放/导出。")}</p>` : ""}
+    ${asset.exports_stale && exports.length ? `<p class="strip-note">${t("去青导出已过期（对应旧草稿）。请重新「去青导出」，否则预览仍是旧透明帧。")}</p>` : ""}
+    ${exports.length && !asset.exports_stale ? `<p class="strip-note is-info">${t("已去青导出 {n} 帧透明 PNG（不进对战）。", { n: exports.length })}</p>` : ""}
     ${qualityNote}
     ${candidatePicker}
     <div class="prompt-box">
       <span class="prompt-age" data-portrait-prompt-age="${slot.id}" hidden></span>
-      <textarea data-portrait-prompt="${slot.id}" rows="5" title="可直接改英文生图词；也可点「微调提示词」按意见重写。">${escapeHtml(prompt)}</textarea>
-      ${zh ? `<p class="prompt-zh"><b>中文对照</b> ${escapeHtml(zh)}</p>` : ""}
+      <textarea data-portrait-prompt="${slot.id}" rows="5" title="${escapeHtml(t("可直接改英文生图词；也可点「微调提示词」按意见重写。"))}">${escapeHtml(prompt)}</textarea>
+      ${zh ? `<p class="prompt-zh"><b>${t("中文对照")}</b> ${escapeHtml(zh)}</p>` : ""}
     </div>
     ${blueprintBox}
     <div class="row">
       <button type="button" data-portrait-gen="${slot.id}" ${!pid || busy ? "disabled" : ""}>${draftUrl ? t("再出一版草稿") : t("生成草稿")}</button>
       ${slot.id === "turnaround" && draftUrl ? `<button type="button" data-portrait-lock-turnaround="1" ${turnaroundLocked ? "disabled" : ""}>${turnaroundLocked ? t("三视图已锁定") : t("确认并锁定三视图")}</button>` : ""}
-      ${pid ? `<button type="button" data-portrait-reprompt="${slot.id}" ${busy ? "disabled" : ""} title="写出不满意的点，系统重写本槽英文提示词；再点生成草稿出新图">微调提示词</button>` : ""}
-      ${draftUrl ? `<button type="button" data-portrait-discard="${slot.id}">丢弃草稿</button>` : ""}
-      <button type="button" data-portrait-split="${slot.id}" ${!draftUrl || generationRejected ? "disabled" : ""} title="${generationRejected ? t("当前草稿检出的人物/格数不等于设定帧数；请重新生成，系统不会把它切坏。") : timelineFinal ? `将丢弃当前最终时间线，重置为原始 ${baseN} 帧切分` : t("切分基础关键帧；切分后可进入身长工作区扩帧和重排")}">${generationRejected ? t("草稿格数不合格") : timelineFinal ? `重置为基础 ${baseN} 帧` : showFrames ? `换一种切法（${nextSplitVariant}/${splitVariants}）` : `一键切分（${baseN} 帧）`}</button>
+      ${pid ? `<button type="button" data-portrait-reprompt="${slot.id}" ${busy ? "disabled" : ""} title="${escapeHtml(t("写出不满意的点，系统重写本槽英文提示词；再点生成草稿出新图"))}">${t("微调提示词")}</button>` : ""}
+      ${draftUrl ? `<button type="button" data-portrait-discard="${slot.id}">${t("丢弃草稿")}</button>` : ""}
+      <button type="button" data-portrait-split="${slot.id}" ${!draftUrl || generationRejected ? "disabled" : ""} title="${escapeHtml(splitTitle)}">${splitLabel}</button>
       ${canPlay ? `<button type="button" data-portrait-play="${slot.id}">${playing ? t("停止") : t("播放")}</button>` : ""}
       <button type="button"${exports.length && !asset.exports_stale ? "" : ` class="primary"`} data-portrait-export="${slot.id}" ${(!draftUrl && !showFrames) || generationRejected ? "disabled" : ""} title="${generationRejected ? t("当前草稿布局不合格，不能导出为动画。") : exports.length ? t("已有透明导出，再点会覆盖该槽导出目录") : t("切分后去青导出透明 PNG")}">${exports.length && !asset.exports_stale ? t("重新去青导出") : t("去青导出")}</button>
-      ${exports.length ? `<button type="button" data-portrait-reveal="${slot.id}" title="在 Finder 中打开该槽导出目录">打开文件夹</button>` : ""}
-      ${draftUrl ? `<a class="dl" href="${draftUrl}" download="${pid}_${slot.id}.png">下载草稿</a>` : ""}
+      ${exports.length ? `<button type="button" data-portrait-reveal="${slot.id}" title="${escapeHtml(t("在 Finder 中打开该槽导出目录"))}">${t("打开文件夹")}</button>` : ""}
+      ${draftUrl ? `<a class="dl" href="${draftUrl}" download="${pid}_${slot.id}.png">${t("下载草稿")}</a>` : ""}
     </div>
-    ${canPlay ? `<div class="fps-row"><label>播放帧率 <input type="range" min="4" max="16" value="${playing ? playback.fps : 8}" data-portrait-fps="${slot.id}" /><span data-portrait-fps-val="${slot.id}">${playing ? playback.fps : 8}</span> fps</label></div>` : ""}
+    ${canPlay ? `<div class="fps-row"><label>${t("播放帧率")} <input type="range" min="4" max="16" value="${playing ? playback.fps : 8}" data-portrait-fps="${slot.id}" /><span data-portrait-fps-val="${slot.id}">${playing ? playback.fps : 8}</span> fps</label></div>` : ""}
   </article>`;
 }
 
@@ -3259,15 +3329,7 @@ function renderPortraitBoard() {
   }
   const slots = state.portraitSlots?.length
     ? state.portraitSlots
-    : [
-        { id: "turnaround", title: t("人物三视图"), hint: "" },
-        { id: "idle", title: t("待机呼吸"), hint: "" },
-        { id: "walk", title: t("走动"), hint: "" },
-        { id: "happy", title: t("开心"), hint: "" },
-        { id: "sad", title: t("沮丧"), hint: "" },
-        { id: "sleep", title: t("睡觉"), hint: "" },
-        { id: "wave", title: t("挥手"), hint: "" },
-      ];
+    : Object.entries(PORTRAIT_SLOT_TITLE_ZH).map(([id, title]) => ({ id, title, hint: "" }));
   if (!state.portrait) {
     $("grid").innerHTML = t(
       '<div class="empty-viewport"><b>尚未打开立绘</b>点「新建立绘」或从右侧列表打开。</div>'
@@ -3387,7 +3449,10 @@ async function deletePortrait(portraitId) {
       : found?.display_name || id;
   if (
     !window.confirm(
-      `删除立绘「${name}」？\n会清掉设定、全部草稿切分，以及已去青导出的透明帧（exports/portraits/${id}）。`
+      t(
+        "删除立绘「{name}」？\n会清掉设定、全部草稿切分，以及已去青导出的透明帧（exports/portraits/{id}）。",
+        { name, id }
+      )
     )
   ) {
     return;

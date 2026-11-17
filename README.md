@@ -17,7 +17,7 @@
 
 ## macOS 客户端（测试版）
 
-从 [GitHub 测试版发布页](https://github.com/jayson-sheyue/herogame-studio/releases/tag/v0.1.0-beta.5) 下载。Apple Silicon（M 系列芯片）／macOS 15 或更高版本：打开 `HeroGameStudio-0.1.0-beta.5-macOS-arm64.dmg`，将 **作图工坊.app** 拖入 **Applications** 后启动。内置 Python、依赖和本地服务，无需安装 Python、Node 或 gcloud，也不必保持终端开启。选择产品线与工程文件夹后，在 **API Key 设置**中输入自己的密钥；需要英文界面时在同一面板切换 **界面语言**。
+从 [GitHub 测试版发布页](https://github.com/jayson-sheyue/herogame-studio/releases/tag/v0.1.0-beta.6) 下载。Apple Silicon（M 系列芯片）／macOS 15 或更高版本：打开 `HeroGameStudio-0.1.0-beta.6-macOS-arm64.dmg`，将 **作图工坊.app** 拖入 **Applications** 后启动。内置 Python、依赖和本地服务，无需安装 Python、Node 或 gcloud，也不必保持终端开启。选择产品线与工程文件夹后，在 **API Key 设置**中输入自己的密钥；需要英文界面时在同一面板切换 **界面语言**。
 
 客户端使用原生 macOS 窗口、文件选择和保存对话框；关闭窗口即退出，任务或未保存修改会先提示。下载取消不会显示保存成功；客户端退出后只停止自己启动的服务，不影响原有网页服务。
 

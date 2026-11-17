@@ -234,18 +234,18 @@
       <section class="fold open" data-rail="portraits" hidden>
         <h2 data-i18n="portraits.title">立绘简报</h2>
         <div class="fold-body">
-          <p class="tiny">独立于对战英雄：只出青屏动作条 → 切分 → <b>去青导出透明 PNG</b>到本机，不写 fighter、不进 game/heroes。</p>
+          <p class="tiny" data-i18n="portraits.lead" data-i18n-html="1">独立于对战英雄：只出青屏动作条 → 切分 → <b>去青导出透明 PNG</b>到本机，不写 fighter、不进 game/heroes。</p>
           <div class="actions split">
             <button id="newPortraitBtn" class="primary" type="button" data-i18n="portraits.new">新建立绘</button>
             <button id="deletePortraitBtn" class="danger" type="button" disabled data-i18n="portraits.delete">删除这份立绘</button>
           </div>
-          <label>人物形象 <span>必填</span>
+          <label><span data-i18n="portraits.appearance">人物形象</span> <span data-i18n="portraits.required">必填</span>
             <textarea id="portraitAppearance" rows="3" placeholder="例如：穿红围巾的小狐狸桌宠，圆耳蓬尾，侧视剪影可爱可读。" data-i18n-placeholder="portraits.appearancePlaceholder"></textarea>
           </label>
           <label><span data-i18n="portraits.gear">人物配饰</span>
             <textarea id="portraitGear" rows="2" placeholder="例如：红围巾、小铃铛、布袋。" data-i18n-placeholder="portraits.gearPlaceholder"></textarea>
           </label>
-          <label>套图清单 <span data-i18n="portraits.planHint">先定类别与帧数，再写提示词</span></label>
+          <label><span data-i18n="portraits.plan">套图清单</span> <span data-i18n="portraits.planHint">先定类别与帧数，再写提示词</span></label>
           <p class="tiny" data-i18n="portraits.planLead">勾选要出的动作；改帧数（三视图固定 4）。也可添加自定义类别。推理只按清单写提示词，不会自创槽位。</p>
           <div id="portraitSlotPicker" class="portrait-slot-picker"></div>
           <div class="actions split portrait-slot-add">
@@ -262,11 +262,11 @@
             <button id="portraitRevealBtn" type="button" disabled title="在 Finder / 资源管理器中打开该立绘导出目录" data-i18n-title="portraits.revealTitle" data-i18n="portraits.reveal">打开导出文件夹</button>
           </div>
           <div class="actions split">
-            <button id="portraitUnifyBodyBtn" type="button" disabled title="以基准动作（待机或走动等）躯干身高为基准，NEAREST 缩放对齐各动作草稿条。不重新生图。" data-i18n-title="portraits.unifyBodyTitle">一键统一人物尺寸</button>
-            <button id="portraitBodyScaleBtn" type="button" disabled title="逐套对照刻度，微调后写回草稿并自动去青导出。需至少一套动作条草稿。" data-i18n-title="portraits.bodyScaleTitle">身长校对工作区</button>
+            <button id="portraitUnifyBodyBtn" type="button" disabled title="以基准动作（待机或走动等）躯干身高为基准，NEAREST 缩放对齐各动作草稿条。不重新生图。" data-i18n="portraits.unifyBody" data-i18n-title="portraits.unifyBodyTitle">一键统一人物尺寸</button>
+            <button id="portraitBodyScaleBtn" type="button" disabled title="逐套对照刻度，微调后写回草稿并自动去青导出。需至少一套动作条草稿。" data-i18n="portraits.bodyScale" data-i18n-title="portraits.bodyScaleTitle">身长校对工作区</button>
           </div>
-          <p class="tiny">卡片里的提示词可直接改，会自动保存；也可点「微调提示词」写不满意的点让系统重写，再点「生成草稿 / 再出一版」。动作条必须跟三视图同一人；人物主体禁止青/青绿/水色（便于去青抠图）。草稿可「丢弃」后重出。身长校对保存本套时会写回草稿并<strong>自动去青导出</strong>该槽透明帧。「删除这份立绘」会清掉设定、草稿与已导出透明帧。</p>
-          <p class="tiny" id="portraitExportHint">导出目录：当前工程 <code>assets/studio/exports/portraits/&lt;id&gt;/</code></p>
+          <p class="tiny" data-i18n="portraits.help" data-i18n-html="1">卡片里的提示词可直接改，会自动保存；也可点「微调提示词」写不满意的点让系统重写，再点「生成草稿 / 再出一版」。动作条必须跟三视图同一人；人物主体禁止青/青绿/水色（便于去青抠图）。草稿可「丢弃」后重出。身长校对保存本套时会写回草稿并<strong>自动去青导出</strong>该槽透明帧。「删除这份立绘」会清掉设定、草稿与已导出透明帧。</p>
+          <p class="tiny" id="portraitExportHint" data-i18n="portraits.exportHint" data-i18n-html="1">导出目录：当前工程 <code>assets/studio/exports/portraits/&lt;id&gt;/</code></p>
         </div>
       </section>
 
@@ -300,8 +300,8 @@
             <button id="genAllBtn" type="button" disabled data-i18n="heroes.genAll">一键生成其余套图</button>
           </div>
           <div class="actions split">
-            <button id="unifyBodyBtn" type="button" disabled title="以 idle 躯干身高（忽略武器/粒子尖刺）为基准，NEAREST 缩放对齐各动作条。不重新生图。" data-i18n-title="heroes.unifyBodyTitle">一键统一人物尺寸</button>
-            <button id="bodyChartBtn" type="button" disabled title="页内工作区：逐套对照刻度，可微调单帧尺寸并直接入库。" data-i18n-title="heroes.bodyScaleTitle">身长校对工作区</button>
+            <button id="unifyBodyBtn" type="button" disabled title="以 idle 躯干身高（忽略武器/粒子尖刺）为基准，NEAREST 缩放对齐各动作条。不重新生图。" data-i18n="heroes.unifyBody" data-i18n-title="heroes.unifyBodyTitle">一键统一人物尺寸</button>
+            <button id="bodyChartBtn" type="button" disabled title="页内工作区：逐套对照刻度，可微调单帧尺寸并直接入库。" data-i18n="heroes.bodyScale" data-i18n-title="heroes.bodyScaleTitle">身长校对工作区</button>
           </div>
           <div class="actions split">
             <button id="saveHeroBtn" type="button" data-i18n="heroes.save">保存进度</button>
