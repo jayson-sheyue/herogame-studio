@@ -237,7 +237,7 @@ test('partial export is marked partial and retains per-slot retry details', asyn
   app.sandbox.api = async () => ({exports:[{count:2}], errors:[{slot_id:'walk',error:'missing draft'}]});
   await app.run('exportPortraitSlot("")');
   assert.equal(tasks[0][1], 'partial');
-  assert.match(tasks[0][2], /walk.*missing draft/);
+  assert.match(tasks[0][2], /(walk|走动).*missing draft/);
   assert.match(app.statuses.at(-1)[0], /保留 2 帧/);
 });
 
