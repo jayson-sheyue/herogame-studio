@@ -577,5 +577,11 @@
   "还没有采集声线。请先上传或录制，再点「从录音采集声线」。": "No voice captured yet. Upload or record, then click “Capture voice from recording”.",
   "界面语言已切换。": "Interface language switched.",
   "进度已保存（{name}）。下次打开会继续这份套图。": "Progress saved ({name}). Opening later continues this sheet set.",
-  "已打开立绘「{name}」": "Opened portrait “{name}”"
+  "已打开立绘「{name}」": "Opened portrait “{name}”",
+  "删": "Del",
+  "立": "P",
+  "删除「{name}」": "Delete “{name}”",
+  "删除这张地图": "Delete this stage",
+  "删除这份草稿": "Delete this draft",
+  "移除": "Remove"
 }

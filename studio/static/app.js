@@ -32,6 +32,9 @@ async function setUiLocale(locale) {
   } else {
     try { localStorage.setItem("herogame.studio.locale", locale === "en" ? "en" : "zh-CN"); } catch {}
   }
+  if (window.StudioI18n && typeof window.StudioI18n.applyDom === "function") {
+    window.StudioI18n.applyDom(document);
+  }
   const titles = {
     select: t("选人"), intro: t("出场"), hurt: t("受击"),
     super: t("奥义"), win: t("胜利"), defeat: t("战败"),
@@ -39,8 +42,26 @@ async function setUiLocale(locale) {
   state.voiceLines.forEach((line) => { if (titles[line.id]) line.title = titles[line.id]; });
   syncLocaleControls();
   try { await refreshKeySettings(); } catch {}
+  try {
+    applyWorkspace({
+      workspace: state.workspace,
+      projects: state.projects,
+      line: state.line,
+      has_project: state.hasProject,
+      needs_gate: state.needsGate,
+    });
+  } catch {}
+  try {
+    const mode = state.mode || "style";
+    const boardTitles = { style: t("风格锚点"), stages: t("地图库"), heroes: t("英雄套图"), portraits: t("立绘/桌宠") };
+    if ($("boardTitle")) $("boardTitle").textContent = boardTitles[mode] || mode;
+  } catch {}
   try { renderInbox(); } catch {}
   try { if (typeof renderBoard === "function") renderBoard(); } catch {}
+  try { if (typeof renderPortraitList === "function") renderPortraitList(); } catch {}
+  try { if (typeof renderPortraitSlotPicker === "function") renderPortraitSlotPicker(); } catch {}
+  try { if (typeof renderHeroList === "function") renderHeroList(); } catch {}
+  try { if (typeof renderStageList === "function") renderStageList(); } catch {}
   try { if (typeof refreshActionLocks === "function") refreshActionLocks(); } catch {}
   try { if (typeof renderVoice === "function") renderVoice(); } catch {}
   setStatus(t("界面语言已切换。"), "ok");
@@ -796,9 +817,9 @@ function applyWorkspace(data = {}) {
   const label = ws.line_label || (state.line === "deskpet" ? t("桌宠/立绘") : state.line === "herogame" ? t("对战游戏") : "");
   if (now) {
     now.textContent = ws.root
-      ? `当前：${ws.name || t("未命名")} · ${label} · ${ws.root}`
+      ? t("当前：{name} · {label} · {path}", { name: ws.name || t("未命名"), label, path: ws.root })
       : state.line
-        ? `已选「${label}」，尚未打开工程`
+        ? t("已选「{label}」，尚未打开工程", { label })
         : t("尚未选择产品线");
   }
   if ($("projectDlgNow")) {
@@ -971,7 +992,7 @@ function renderProjectRecent() {
           <b>${esc(p.name || p.root)}${p.active ? t(" · 当前") : ""}</b>
           <small>${esc(p.root)}${p.exists ? "" : t("（缺失）")}</small>
         </button>
-        <button type="button" class="asset-del" data-wipe-project="${esc(p.root)}" title="${p.active ? t("当前工程不能删除") : t("清空该文件夹里的游戏资产")}">删</button>
+        <button type="button" class="asset-del" data-wipe-project="${esc(p.root)}" title="${p.active ? t("当前工程不能删除") : t("清空该文件夹里的游戏资产")}">${t("删")}</button>
       </div>`
     )
     .join("");
@@ -1560,7 +1581,7 @@ function renderBoard() {
   }
   if (!state.heroSlots.length) {
     $("grid").innerHTML =
-      `<div class="empty-viewport"><b>视口为空</b>先在左侧写出套图提示词，槽位会出现在这里。</div>`;
+      t('<div class="empty-viewport"><b>视口为空</b>先在左侧写出套图提示词，槽位会出现在这里。</div>');
     refreshActionLocks();
     markBusyCards();
     return;
@@ -1802,7 +1823,7 @@ function collisionEditorHtml() {
     ? rows
         .map((row) => {
           const on = sel && sel.kind === row.kind && sel.i === row.i;
-          return `<li class="${on ? "on" : ""}"><button type="button" class="col-pick" data-col-pick="${row.kind}:${row.i}"><b>${row.label}</b> ${Math.round(row.r.x * 100)}–${Math.round((row.r.x + row.r.w) * 100)}%　高 ${Math.round(row.r.y * 100)}%</button><button type="button" data-col-del="${row.kind}:${row.i}">删</button></li>`;
+          return `<li class="${on ? "on" : ""}"><button type="button" class="col-pick" data-col-pick="${row.kind}:${row.i}"><b>${row.label}</b> ${Math.round(row.r.x * 100)}–${Math.round((row.r.x + row.r.w) * 100)}%　高 ${Math.round(row.r.y * 100)}%</button><button type="button" data-col-del="${row.kind}:${row.i}">${t("删")}</button></li>`;
         })
         .join("")
     : t("<li class='empty'>还没有矩形。默认开战仍是通铺地面。</li>");
@@ -2034,7 +2055,7 @@ function refreshCollisionList() {
     ? rows
         .map((row) => {
           const on = sel && sel.kind === row.kind && sel.i === row.i;
-          return `<li class="${on ? "on" : ""}"><button type="button" class="col-pick" data-col-pick="${row.kind}:${row.i}"><b>${row.label}</b> ${Math.round(row.r.x * 100)}–${Math.round((row.r.x + row.r.w) * 100)}%　高 ${Math.round(row.r.y * 100)}%</button><button type="button" data-col-del="${row.kind}:${row.i}">删</button></li>`;
+          return `<li class="${on ? "on" : ""}"><button type="button" class="col-pick" data-col-pick="${row.kind}:${row.i}"><b>${row.label}</b> ${Math.round(row.r.x * 100)}–${Math.round((row.r.x + row.r.w) * 100)}%　高 ${Math.round(row.r.y * 100)}%</button><button type="button" data-col-del="${row.kind}:${row.i}">${t("删")}</button></li>`;
         })
         .join("")
     : t("<li class='empty'>还没有矩形。默认开战仍是通铺地面。</li>");
@@ -2852,7 +2873,7 @@ function renderStageList() {
           ${pic}
           <span class="asset-meta"><b>${s.display_name}</b><small>${s.visual || s.stage_id}</small></span>
         </button>
-          <button type="button" class="asset-del" data-delete-stage="${s.stage_id}" title="删除这张地图">删</button>
+          <button type="button" class="asset-del" data-delete-stage="${s.stage_id}" title="${t("删除这张地图")}">${t("删")}</button>
         </div>`;
     })
     .join("");
@@ -2945,7 +2966,7 @@ function renderPortraitSlotPicker() {
         <span class="tiny">${locked ? t("必选锁外形") : "帧"}</span>
         ${
           !state.portraitSlotPresets?.some((s) => s.id === p.id)
-            ? `<button type="button" class="asset-del" data-plan-remove="${escapeHtml(p.id)}" title="移除">删</button>`
+            ? `<button type="button" class="asset-del" data-plan-remove="${escapeHtml(p.id)}" title="${t("移除")}">${t("删")}</button>`
             : ""
         }
       </label>`;
@@ -3232,7 +3253,7 @@ function portraitCardHtml(slot) {
 function renderPortraitBoard() {
   if (!state.portraitSlots?.length && !state.portrait) {
     $("grid").innerHTML =
-      `<div class="empty-viewport"><b>立绘/桌宠</b>在左侧填写形象与配饰，写出提示词后槽位会出现在这里。</div>`;
+      t('<div class="empty-viewport"><b>立绘/桌宠</b>在左侧填写形象与配饰，写出提示词后槽位会出现在这里。</div>');
     refreshActionLocks();
     return;
   }
@@ -3248,8 +3269,9 @@ function renderPortraitBoard() {
         { id: "wave", title: t("挥手"), hint: "" },
       ];
   if (!state.portrait) {
-    $("grid").innerHTML =
-      `<div class="empty-viewport"><b>尚未打开立绘</b>点「新建立绘」或从右侧列表打开。</div>`;
+    $("grid").innerHTML = t(
+      '<div class="empty-viewport"><b>尚未打开立绘</b>点「新建立绘」或从右侧列表打开。</div>'
+    );
   } else {
     $("grid").innerHTML = slots.map((s) => portraitCardHtml(s)).join("");
   }
@@ -3266,15 +3288,17 @@ function renderPortraitList() {
     return;
   }
   const cur = currentPortraitId();
+  const del = t("删");
+  const mark = t("立");
   box.innerHTML = state.portraits
     .map(
       (p) => `<div class="asset-row">
         <button type="button" class="asset-item${p.portrait_id === cur ? " on" : ""}" data-open-portrait="${escapeHtml(p.portrait_id)}">
-          <span class="asset-ico">立</span>
+          <span class="asset-ico">${mark}</span>
           <span class="asset-meta"><b>${escapeHtml(p.display_name || p.portrait_id)}</b>
           <small>${escapeHtml(p.one_liner || p.appearance || p.portrait_id)}</small></span>
         </button>
-        <button type="button" class="asset-del" data-delete-portrait="${escapeHtml(p.portrait_id)}" title="删除「${escapeHtml(p.display_name || p.portrait_id)}」">删</button>
+        <button type="button" class="asset-del" data-delete-portrait="${escapeHtml(p.portrait_id)}" title="${escapeHtml(t("删除「{name}」", { name: p.display_name || p.portrait_id }))}">${del}</button>
       </div>`
     )
     .join("");
@@ -3883,7 +3907,7 @@ async function loadHeroes() {
           ${ico}
           <span class="asset-meta"><b>${h.display_name}</b><small>${h.hero_id} · ${mark} 槽</small></span>
         </button>
-          <button type="button" class="asset-del" data-delete-hero="${h.hero_id}" title="删除这份草稿">删</button>
+          <button type="button" class="asset-del" data-delete-hero="${h.hero_id}" title="${t("删除这份草稿")}">${t("删")}</button>
         </div>`;
     })
     .join("");

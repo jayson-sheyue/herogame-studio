@@ -268,5 +268,14 @@
   "projectDlg.rename": "保存别名",
   "projectDlg.hint": "列表切换已有工程。选择空文件夹可新建（别名便于区分，文件夹名仍是落盘路径）。当前工程不能删，请先切走。",
   "projectDlg.browse": "选择文件夹…",
-  "projectDlg.cancel": "取消"
+  "projectDlg.cancel": "取消",
+  "common.deleteShort": "删",
+  "common.portraitMark": "立",
+  "common.none": "暂无",
+  "viewport.emptyPortraitTitle": "尚未打开立绘",
+  "viewport.emptyPortraitBody": "点「新建立绘」或从右侧列表打开。",
+  "viewport.emptyPortraitHtml": "<div class=\"empty-viewport\"><b>尚未打开立绘</b>点「新建立绘」或从右侧列表打开。</div>",
+  "viewport.emptyHeroHtml": "<div class=\"empty-viewport\"><b>视口为空</b>先在左侧写出套图提示词，槽位会出现在这里。</div>",
+  "viewport.emptyPortraitFormHtml": "<div class=\"empty-viewport\"><b>立绘/桌宠</b>在左侧填写形象与配饰，写出提示词后槽位会出现在这里。</div>",
+  "menubar.inboxLabel": "任务"
 }

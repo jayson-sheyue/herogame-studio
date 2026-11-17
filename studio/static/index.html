@@ -78,22 +78,22 @@
     <div class="brand">
       <img class="mark" src="/static/brand-icon.svg?v=1" width="28" height="28" alt="" aria-hidden="true" />
       <div>
-        <h1>作图工坊</h1>
+        <h1 data-i18n="menubar.brand">作图工坊</h1>
         <p id="brandSub" data-i18n="menubar.brandSub">选择产品线后进入工作区</p>
       </div>
     </div>
     <nav class="tabs" id="modeNav">
-      <button type="button" data-mode="style" data-lines="herogame,deskpet" class="on">风格锚点</button>
+      <button type="button" data-mode="style" data-lines="herogame,deskpet" class="on" data-i18n="menubar.tab.style">风格锚点</button>
       <button type="button" data-mode="stages" data-lines="herogame" data-i18n="menubar.tab.stages">地图库</button>
       <button type="button" data-mode="heroes" data-lines="herogame" data-i18n="menubar.tab.heroes">英雄套图</button>
       <button type="button" data-mode="portraits" data-lines="deskpet" data-i18n="menubar.tab.portraits">立绘套图</button>
     </nav>
     <div class="menubar-right">
-      <button type="button" id="switchLineBtn" class="ghost-btn" title="切换产品线">切换产品线</button>
+      <button type="button" id="switchLineBtn" class="ghost-btn" data-i18n="menubar.switchLine" data-i18n-title="menubar.switchLineTitle" title="切换产品线">切换产品线</button>
       <div class="health" id="health" data-i18n="menubar.healthChecking">正在检查鉴权…</div>
       <div class="inbox" id="inbox">
         <button type="button" class="inbox-toggle" id="inboxToggle" aria-expanded="false" aria-controls="inboxPanel">
-          任务 <span id="inboxBadge" hidden>0</span>
+          <span data-i18n="menubar.inboxLabel">任务</span> <span id="inboxBadge" hidden>0</span>
         </button>
         <div class="inbox-panel" id="inboxPanel" hidden>
           <div class="inbox-head" data-i18n="menubar.inboxHead">最近任务</div>
@@ -112,7 +112,7 @@
         <div class="fold-body">
           <p class="tiny" id="projectNow" data-i18n="project.reading">正在读取当前工程…</p>
           <div class="actions">
-            <button id="projectSwitchBtn" class="primary" type="button">切换项目</button>
+            <button id="projectSwitchBtn" class="primary" type="button" data-i18n="project.switch">切换项目</button>
           </div>
           <p class="tiny" id="projectFoldHint" data-i18n="project.foldHint">当前产品线的工程列表。切换项目不会跨到另一条产品线。</p>
         </div>
@@ -236,7 +236,7 @@
         <div class="fold-body">
           <p class="tiny">独立于对战英雄：只出青屏动作条 → 切分 → <b>去青导出透明 PNG</b>到本机，不写 fighter、不进 game/heroes。</p>
           <div class="actions split">
-            <button id="newPortraitBtn" class="primary" type="button">新建立绘</button>
+            <button id="newPortraitBtn" class="primary" type="button" data-i18n="portraits.new">新建立绘</button>
             <button id="deletePortraitBtn" class="danger" type="button" disabled data-i18n="portraits.delete">删除这份立绘</button>
           </div>
           <label>人物形象 <span>必填</span>
@@ -437,7 +437,7 @@
         <h2 data-i18n="portraits.listTitle">已有立绘</h2>
         <div class="fold-body">
           <div class="actions split">
-            <button id="newPortraitListBtn" type="button">新建立绘</button>
+            <button id="newPortraitListBtn" type="button" data-i18n="portraits.listNew">新建立绘</button>
             <button id="deletePortraitListBtn" class="danger" type="button" disabled title="删除当前打开的立绘（含草稿与导出）" data-i18n-title="portraits.listDeleteTitle" data-i18n="portraits.listDelete">删除当前立绘</button>
           </div>
           <div id="portraitList" class="asset-list">暂无</div>
@@ -610,9 +610,9 @@
         el.onerror = reject;
         document.body.append(el);
       });
-      load("/static/i18n.js?v=1")
+      load("/static/i18n.js?v=2")
         .then(() => window.StudioI18n.loadCatalogs(window.StudioI18n.readStored()))
-        .then(() => load("/static/app.js?v=103"))
+        .then(() => load("/static/app.js?v=104"))
         .catch((err) => console.error(err));
     }
   </script>

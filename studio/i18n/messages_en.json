@@ -268,5 +268,14 @@
   "projectDlg.rename": "Save alias",
   "projectDlg.hint": "Switch among listed projects. Pick an empty folder to create (alias helps distinguish; folder name is still the on-disk path). You cannot delete the current project—switch away first.",
   "projectDlg.browse": "Choose folder…",
-  "projectDlg.cancel": "Cancel"
+  "projectDlg.cancel": "Cancel",
+  "common.deleteShort": "Del",
+  "common.portraitMark": "P",
+  "common.none": "None yet",
+  "viewport.emptyPortraitTitle": "No portrait open",
+  "viewport.emptyPortraitBody": "Click “New portrait” or open one from the list on the right.",
+  "viewport.emptyPortraitHtml": "<div class=\"empty-viewport\"><b>No portrait open</b> Click “New portrait” or open one from the list on the right.</div>",
+  "viewport.emptyHeroHtml": "<div class=\"empty-viewport\"><b>Viewport empty</b> Write sheet prompts on the left and slots will appear here.</div>",
+  "viewport.emptyPortraitFormHtml": "<div class=\"empty-viewport\"><b>Portrait / desk pet</b> Fill look and accessories on the left, then write prompts—slots appear here.</div>",
+  "menubar.inboxLabel": "Tasks"
 }
