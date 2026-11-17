@@ -19,7 +19,8 @@ def probe() -> str:
     try:
         with opener.open(URL, timeout=1) as response:
             page = response.read(65536)
-            if "<title>英灵大乱斗 · 作图工坊</title>".encode() in page and b'id="lineGate"' in page:
+            # Title may include data-i18n attrs after localization markup.
+            if "英灵大乱斗 · 作图工坊".encode() in page and b'id="lineGate"' in page:
                 return "ready"
             return "occupied"
     except urllib.error.HTTPError:

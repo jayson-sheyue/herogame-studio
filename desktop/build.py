@@ -26,8 +26,12 @@ def run(args, **kwargs):
 def main():
     if sys.platform != "darwin" or platform.machine() != "arm64":
         raise SystemExit("此构建脚本仅支持 Apple Silicon Mac。")
-    guard = Path.home() / ".agents/skills/vibe-coding/scripts/secret_guard.py"
-    if guard.exists():
+    guard_candidates = [
+        Path.home() / ".agents/skills/vibe-coding/scripts/secret_guard.py",
+        Path.home() / ".codex/skills/vibe-coding/scripts/secret_guard.py",
+    ]
+    guard = next((path for path in guard_candidates if path.exists()), None)
+    if guard:
         run([sys.executable, guard, ROOT, "--include-build-dirs"])
     BUILD.mkdir(parents=True, exist_ok=True)
     DIST.mkdir(exist_ok=True)
@@ -41,9 +45,13 @@ def main():
     env = dict(os.environ, PYINSTALLER_CONFIG_DIR=str(BUILD / "pyinstaller-cache"))
     run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--name", "studio-service",
          "--target-architecture", "arm64", "--distpath", BUILD / "frozen", "--workpath", BUILD / "freeze-work", "--specpath", BUILD,
-         "--paths", ROOT / "studio", "--add-data", f"{ROOT / 'studio/static'}:static",
+         "--paths", ROOT / "studio",
+         "--add-data", f"{ROOT / 'studio/static'}:static",
+         "--add-data", f"{ROOT / 'studio/i18n'}:i18n",
          "--runtime-hook", ROOT / "desktop/certificates.py",
-         "--hidden-import", "keyring.backends.macOS", "--copy-metadata", "keyring", "--copy-metadata", "google-genai",
+         "--hidden-import", "keyring.backends.macOS",
+         "--hidden-import", "i18n", "--hidden-import", "i18n_prompts", "--hidden-import", "prompts_en",
+         "--copy-metadata", "keyring", "--copy-metadata", "google-genai",
          "--exclude-module", "tkinter", "--exclude-module", "unittest", "--exclude-module", "pip",
          ROOT / "desktop/backend.py"], env=env)
     # These are third-party public trust anchors, not private PEM credentials.
@@ -69,7 +77,13 @@ def main():
             "NSAppTransportSecurity":{"NSAllowsLocalNetworking":True}}
     (contents / "Info.plist").write_bytes(plistlib.dumps(info))
     # Only public source identities and dependency versions. Never collect runtime data.
-    source_files = sorted([*ROOT.glob("studio/*.py"), *ROOT.glob("studio/static/*"), *ROOT.glob("desktop/*")])
+    source_files = sorted([
+        *ROOT.glob("studio/*.py"),
+        *ROOT.glob("studio/i18n/*"),
+        *ROOT.glob("studio/static/*"),
+        *ROOT.glob("studio/static/locales/*"),
+        *ROOT.glob("desktop/*"),
+    ])
     hashes = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
               for path in source_files if path.is_file() and not path.name.startswith("test_")}
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()

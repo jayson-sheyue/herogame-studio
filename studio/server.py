@@ -9,6 +9,7 @@ import re
 import shutil
 import threading
 import time
+from contextvars import ContextVar
 from io import BytesIO
 from pathlib import Path
 
@@ -22,12 +23,11 @@ from PIL import Image
 from pydantic import BaseModel, Field, SecretStr
 from workspace_guard import WorkspaceRoute
 
+import i18n_prompts
+from i18n import request_locale, t
 from combat import normalize_moves, sync_moves_into_fighter
 from prompts import (
     HERO_SLOTS,
-    INFER_SYSTEM,
-    PORTRAIT_INFER_SYSTEM,
-    PORTRAIT_SLOT_INFER_SYSTEM,
     PORTRAIT_SLOTS,
     PORTRAIT_SLOT_IDS,
     PORTRAIT_DEFAULT_PLAN_IDS,
@@ -36,17 +36,11 @@ from prompts import (
     PORTRAIT_REF_LABEL_STYLE,
     normalize_portrait_slot,
     normalize_portrait_slot_list,
-    portrait_infer_system_for,
     SLOT_BY_ID,
-    SLOT_INFER_SYSTEM,
-    STAGE_INFER_SYSTEM,
     STAGE_SLOT,
     STAGE_TERRAIN_HINTS,
-    STYLE_INFER_SYSTEM,
-    style_infer_system,
     normalize_product_line,
     STYLE_SLOT,
-    VOICE_INFER_SYSTEM,
     VOICE_LINES,
     normalize_voice,
     parse_line,
@@ -192,6 +186,24 @@ app = FastAPI(title="HeroGame Art Studio")
 app.router.route_class = WorkspaceRoute
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
+_ui_locale: ContextVar[str] = ContextVar("ui_locale", default="zh-CN")
+
+
+def ui_locale() -> str:
+    return _ui_locale.get()
+
+
+def L(zh: str, **params) -> str:
+    return t(zh, locale=ui_locale(), **params)
+
+
+@app.middleware("http")
+async def studio_locale_middleware(request, call_next):
+    token = _ui_locale.set(request_locale(request))
+    try:
+        return await call_next(request)
+    finally:
+        _ui_locale.reset(token)
 
 
 @app.exception_handler(RequestValidationError)
@@ -583,10 +595,10 @@ def _require_product_line(kind: str) -> str:
     if line != want:
         raise HTTPException(
             400,
-            f"当前不在「{LINE_LABELS.get(want, want)}」产品线。请先在启动页选择产品线。",
+            L("当前不在「{line}」产品线。请先在启动页选择产品线。", line=LINE_LABELS.get(want, want)),
         )
     if not looks_like_project(paths.root) or detect_kind(paths.root) != want:
-        raise HTTPException(400, f"请先新建或打开一个「{LINE_LABELS.get(want, want)}」工程。")
+        raise HTTPException(400, L("请先新建或打开一个「{line}」工程。", line=LINE_LABELS.get(want, want)))
     return want
 
 
@@ -601,9 +613,9 @@ def _require_deskpet() -> None:
 def _require_active_project() -> str:
     line = current_line()
     if line not in VALID_KINDS:
-        raise HTTPException(400, "请先选择产品线（对战游戏 / 桌宠立绘）。")
+        raise HTTPException(400, L("请先选择产品线（对战游戏 / 桌宠立绘）。"))
     if not looks_like_project(paths.root) or detect_kind(paths.root) != line:
-        raise HTTPException(400, f"请先新建或打开一个「{LINE_LABELS.get(line, line)}」工程。")
+        raise HTTPException(400, L("请先新建或打开一个「{line}」工程。", line=LINE_LABELS.get(line, line)))
     return line
 
 
@@ -871,7 +883,7 @@ def _resolve_split_frames(slot_id: str, requested: int | None = None, saved: dic
         return choice
     if 1 <= choice <= 24:
         return choice
-    raise HTTPException(400, "动作条只能按 4–6 帧（常规）或身长校对后的实际帧数（1–24）切分。")
+    raise HTTPException(400, L("动作条只能按 4–6 帧（常规）或身长校对后的实际帧数（1–24）切分。"))
 
 
 def _hero_asset_view(hero_id: str, slot_id: str) -> dict:
@@ -1046,7 +1058,7 @@ def _tts():
     except ImportError as exc:
         raise HTTPException(
             500,
-            "未安装 Cloud TTS 库。请在 studio 目录运行：python3 -m pip install -r requirements.txt",
+            L("未安装 Cloud TTS 库。请在 studio 目录运行：python3 -m pip install -r requirements.txt"),
         ) from exc
     return available_voices, probe_tts, synthesize
 
@@ -1179,12 +1191,12 @@ def _style_is_locked() -> bool:
 
 def _require_style_locked() -> None:
     if not _style_is_locked():
-        raise HTTPException(400, "请先在风格锚点页采用入库。一个项目只有一个风格锚点，定调后再继续。")
+        raise HTTPException(400, L("请先在风格锚点页采用入库。一个项目只有一个风格锚点，定调后再继续。"))
 
 
 def _require_style_unlocked() -> None:
     if _style_is_locked():
-        raise HTTPException(400, "风格锚点已入库，本项目不可再改。")
+        raise HTTPException(400, L("风格锚点已入库，本项目不可再改。"))
 
 
 def _list_stages() -> list[dict]:
@@ -1265,9 +1277,9 @@ def _serve_under(root: Path, rel: str) -> FileResponse:
     try:
         target.relative_to(base)
     except ValueError as exc:
-        raise HTTPException(403, "路径越界") from exc
+        raise HTTPException(403, L("路径越界")) from exc
     if not target.is_file():
-        raise HTTPException(404, "没有这个文件")
+        raise HTTPException(404, L("没有这个文件"))
     # URLs are busted with ?t=mtime_ns — allow browser cache across hero switches.
     return FileResponse(
         target,
@@ -1346,7 +1358,7 @@ def api_browse_project(body: BrowseBody) -> dict:
     try:
         folder = pick_directory(prompt, body.default)
     except Exception as exc:
-        raise HTTPException(400, f"无法打开系统文件夹窗口：{exc}") from exc
+        raise HTTPException(400, L("无法打开系统文件夹窗口：{error}", error=exc)) from exc
     return {"ok": bool(folder), "folder": folder}
 
 
@@ -1354,7 +1366,7 @@ def api_browse_project(body: BrowseBody) -> dict:
 def api_use_project(body: ProjectBody) -> dict:
     kind = body.kind or current_line()
     if not kind:
-        raise HTTPException(400, "请先选择产品线（对战游戏 / 桌宠立绘）。")
+        raise HTTPException(400, L("请先选择产品线（对战游戏 / 桌宠立绘）。"))
     try:
         payload = use_folder(body.folder, body.name, kind=kind)
     except (ValueError, FileNotFoundError, NotADirectoryError, OSError) as exc:
@@ -1474,7 +1486,19 @@ def infer_style(body: StyleInferBody) -> dict:
     _require_style_unlocked()
     line = current_line() or detect_kind(paths.root)
     notes = (body.notes or "").strip()
-    if normalize_product_line(line) == KIND_DESKPET:
+    if ui_locale() == "en":
+        if normalize_product_line(line) == KIND_DESKPET:
+            user = (
+                f"Style intent (must take priority; do not use fighting-game templates): "
+                f"{notes or '(no notes: design 3 original desk-pet/portrait demo figures, Miyazaki-esque fantasy color + round plump pixels, not fighters)'}\n"
+                "Write the English image-generation prompt for the desk-pet/portrait style lock sheet."
+            )
+        else:
+            user = (
+                f"Additional notes: {notes or '(none; use the default three demo fighter characters for the style lock)'}\n"
+                "Write the image prompt for the style lock sheet."
+            )
+    elif normalize_product_line(line) == KIND_DESKPET:
         user = (
             f"风格意向（必须优先落实，不要套对战格斗模板）：{notes or '（未写备注：请设计 3 个原创桌宠/立绘示范小人，宫崎骏式奇幻色彩 + 圆润饱满像素，不要格斗角色）'}\n"
             "请写出桌宠/立绘风格锚点图的英文生图提示词。"
@@ -1485,9 +1509,9 @@ def infer_style(body: StyleInferBody) -> dict:
             "请写出风格锚点图的提示词。"
         )
     try:
-        data = json.loads(infer_json(style_infer_system(line), user, body.vertex.to_settings()))
+        data = json.loads(infer_json(i18n_prompts.style_infer_system(line, locale=ui_locale()), user, body.vertex.to_settings()))
     except json.JSONDecodeError as exc:
-        raise HTTPException(502, f"推理结果不是合法 JSON：{exc}") from exc
+        raise HTTPException(502, L("推理结果不是合法 JSON：{error}", error=str(exc))) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
 
@@ -1512,7 +1536,7 @@ def generate_style(body: StyleGenerateBody) -> dict:
     _require_style_unlocked()
     prompt = body.prompt.strip()
     if not prompt:
-        raise HTTPException(400, "提示词是空的。")
+        raise HTTPException(400, L("提示词是空的。"))
     dest = draft_style_png()
     try:
         with _IMAGE_SEM:
@@ -1539,7 +1563,7 @@ async def upload_style(file: UploadFile = File(...)) -> dict:
     try:
         im = Image.open(BytesIO(raw)).convert("RGBA")
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, f"无法读取图片：{exc}") from exc
+        raise HTTPException(400, L("无法读取图片：{error}", error=exc)) from exc
     dest = draft_style_png()
     dest.parent.mkdir(parents=True, exist_ok=True)
     im.save(dest, format="PNG")
@@ -1562,7 +1586,7 @@ def get_stage(stage_id: str) -> dict:
     bible = _read_json(folder / "bible.json")
     view = _asset_view(draft_stage_png(stage_id), committed_stage_png(stage_id))
     if not bible and not view["draft"] and not view["committed"]:
-        raise HTTPException(404, "还没有这张地图。")
+        raise HTTPException(404, L("还没有这张地图。"))
     if not bible:
         manifest = _read_json(paths.game / "stages" / stage_id / "stage.json")
         bible = {
@@ -1592,7 +1616,7 @@ def get_stage(stage_id: str) -> dict:
 def save_stage_collision(body: StageCollisionBody) -> dict:
     stage_id = _safe_id(body.stage_id)
     if not stage_id:
-        raise HTTPException(400, "没有 stage_id。")
+        raise HTTPException(400, L("没有 stage_id。"))
     collision = sanitize_stage_collision(body.collision)
     folder = _stage_dir(stage_id)
     bible = _read_json(folder / "bible.json")
@@ -1630,13 +1654,13 @@ def save_stage_collision(body: StageCollisionBody) -> dict:
 def generate_stage_bgm_route(body: StageBgmGenerateBody) -> dict:
     stage_id = _safe_id(body.stage_id)
     if not stage_id or not _stage_exists(stage_id):
-        raise HTTPException(400, "先打开或创建一张地图。")
+        raise HTTPException(400, L("先打开或创建一张地图。"))
     bible = _read_json(_stage_dir(stage_id) / "bible.json")
     manifest = _read_json(paths.game / "stages" / stage_id / "stage.json")
     display_name = bible.get("display_name") or manifest.get("displayName") or stage_id
     visual = bible.get("visual") or bible.get("description") or manifest.get("visual") or ""
     if not visual.strip():
-        raise HTTPException(400, "先写地图描述或 visual，再生成 BGM。")
+        raise HTTPException(400, L("先写地图描述或 visual，再生成 BGM。"))
     image_bytes = None
     image_mime = "image/png"
     if body.use_image:
@@ -1678,10 +1702,10 @@ def commit_stage_bgm_route(body: StageBgmCommitBody) -> dict:
     stage_id = _safe_id(body.stage_id)
     src = draft_stage_bgm(stage_id)
     if not src.exists():
-        raise HTTPException(400, "没有 BGM 草稿。请先生成。")
+        raise HTTPException(400, L("没有 BGM 草稿。请先生成。"))
     manifest_path = stage_manifest_path(stage_id)
     if not manifest_path.exists():
-        raise HTTPException(400, "地图还没入库。请先把 stage.png 采用入库，再提交 BGM。")
+        raise HTTPException(400, L("地图还没入库。请先把 stage.png 采用入库，再提交 BGM。"))
     meta_path = src.with_suffix(".meta.json")
     meta: dict = {}
     if meta_path.exists():
@@ -1718,12 +1742,12 @@ def discard_stage_bgm_route(body: StageBgmDiscardBody) -> dict:
 def delete_stage(body: StageDeleteBody) -> dict:
     stage_id = _safe_id(body.stage_id)
     if not stage_id:
-        raise HTTPException(400, "没有 stage_id。")
+        raise HTTPException(400, L("没有 stage_id。"))
     studio_dir = paths.stages_dir / stage_id
     draft_dir = paths.drafts / "stages" / stage_id
     game_dir = paths.game / "stages" / stage_id
     if not studio_dir.exists() and not draft_dir.exists() and not game_dir.exists():
-        raise HTTPException(404, "还没有这张地图。")
+        raise HTTPException(404, L("还没有这张地图。"))
     if studio_dir.exists() and studio_dir.is_dir():
         shutil.rmtree(studio_dir)
     if draft_dir.exists() and draft_dir.is_dir():
@@ -1751,26 +1775,46 @@ def infer_stage(body: StageInferBody) -> dict:
                 "display_name": manifest.get("displayName") or keep_id,
                 "visual": manifest.get("visual") or "",
             }
-    user = (
-        f"地图描述：{body.description.strip()}\n"
-        f"关键词：{body.keywords.strip() or '（无）'}\n"
-        f"地形意向：{terrain}\n"
-        f"{STAGE_TERRAIN_HINTS[terrain]}\n"
-    )
-    if keep_id:
-        user += (
-            f"这是对已有地图 `{keep_id}`（{existing.get('display_name') or keep_id}）的改稿，不是新地图。"
-            f"必须沿用同一个 stage_id。中文名可以微调。\n"
-            f"原场景要点：{existing.get('visual') or existing.get('description') or '（无）'}\n"
+    if ui_locale() == "en":
+        user = (
+            f"Stage description: {body.description.strip()}\n"
+            f"Keywords: {body.keywords.strip() or '(none)'}\n"
+            f"Terrain intent: {terrain}\n"
+            f"{STAGE_TERRAIN_HINTS[terrain]}\n"
         )
-    user += (
-        "请推理一张可复用对战地图的提示词，并给出与画面一致的 collision。"
-        "高台和凹地必须画进场景，不要用色块。凹地要有底、可站立。不要画角色。"
-    )
+        if keep_id:
+            user += (
+                f"This is a revision of existing stage `{keep_id}` "
+                f"({existing.get('display_name') or keep_id}), not a new stage. "
+                f"Keep the same stage_id. The display name may be lightly adjusted.\n"
+                f"Previous scene notes: {existing.get('visual') or existing.get('description') or '(none)'}\n"
+            )
+        user += (
+            "Infer a reusable versus-stage image prompt and a collision layout that matches the art. "
+            "Platforms and pits must be painted into the scene, not solid color blocks. "
+            "Pits need a floor you can stand on. Do not draw characters."
+        )
+    else:
+        user = (
+            f"地图描述：{body.description.strip()}\n"
+            f"关键词：{body.keywords.strip() or '（无）'}\n"
+            f"地形意向：{terrain}\n"
+            f"{STAGE_TERRAIN_HINTS[terrain]}\n"
+        )
+        if keep_id:
+            user += (
+                f"这是对已有地图 `{keep_id}`（{existing.get('display_name') or keep_id}）的改稿，不是新地图。"
+                f"必须沿用同一个 stage_id。中文名可以微调。\n"
+                f"原场景要点：{existing.get('visual') or existing.get('description') or '（无）'}\n"
+            )
+        user += (
+            "请推理一张可复用对战地图的提示词，并给出与画面一致的 collision。"
+            "高台和凹地必须画进场景，不要用色块。凹地要有底、可站立。不要画角色。"
+        )
     try:
-        data = json.loads(infer_json(STAGE_INFER_SYSTEM, user, body.vertex.to_settings()))
+        data = json.loads(infer_json(i18n_prompts.stage_infer_system(locale=ui_locale()), user, body.vertex.to_settings()))
     except json.JSONDecodeError as exc:
-        raise HTTPException(502, f"推理结果不是合法 JSON：{exc}") from exc
+        raise HTTPException(502, L("推理结果不是合法 JSON：{error}", error=str(exc))) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
 
@@ -1804,7 +1848,7 @@ def generate_stage(body: StageGenerateBody) -> dict:
     _require_herogame()
     _require_style_locked()
     if not body.prompt.strip():
-        raise HTTPException(400, "提示词是空的。")
+        raise HTTPException(400, L("提示词是空的。"))
     stage_id = _safe_id(body.stage_id)
     blobs: list[tuple[bytes, str]] = []
     missing: list[str] = []
@@ -1887,7 +1931,7 @@ def get_hero(hero_id: str) -> dict:
     bible = _read_bible(hero_id)
     has_art = any(work_hero_png(hero_id, slot["id"]) for slot in HERO_SLOTS)
     if not bible and not has_art:
-        raise HTTPException(404, "还没有这个英雄的设定。")
+        raise HTTPException(404, L("还没有这个英雄的设定。"))
     if not bible:
         bible = {"hero_id": hero_id, "display_name": hero_id, "prompts": {}, "description": ""}
         _write_bible(hero_id, bible)
@@ -1897,7 +1941,7 @@ def get_hero(hero_id: str) -> dict:
 @app.post("/api/heroes/save")
 def save_hero(body: HeroSaveBody) -> dict:
     if not (body.hero_id or "").strip() and len(_compose_brief(body.appearance, body.gear, body.kit_brief, body.description)) < 2:
-        raise HTTPException(400, "先写人物形象，或打开一个已有英雄。")
+        raise HTTPException(400, L("先写人物形象，或打开一个已有英雄。"))
     hero_id = _safe_id(body.hero_id) if body.hero_id else _safe_id(body.appearance or body.description)
     bible = _read_bible(hero_id) or {"hero_id": hero_id}
     bible["hero_id"] = hero_id
@@ -1962,19 +2006,30 @@ def infer(body: InferBody) -> dict:
     kit_brief = (body.kit_brief or "").strip()
     description = _compose_brief(appearance, gear, kit_brief, body.description)
     if len(description) < 2:
-        raise HTTPException(400, "请填写人物形象、武器配饰、技能机制。")
-    user = (
-        f"人物形象：{appearance or description}\n"
-        f"人物武器配饰：{gear or '（未单列，见形象）'}\n"
-        f"人物技能机制：{kit_brief or '（未单列，见形象）'}\n"
-        "不要设计地图槽。出场/战败/战胜也是 5 帧青屏动作条，不要背景。"
-        "请按角色动作槽 + 4 个 fx_* 弹道槽写出严谨生图提示词，并填写 moves 数值（effect / mechanic / ailment / projectile）。同一英雄四招 mechanic 必须不同。不要为燃烧/冰冻/中毒增加贴图槽。"
-    )
+        raise HTTPException(400, L("请填写人物形象、武器配饰、技能机制。"))
+    if ui_locale() == "en":
+        user = (
+            f"Appearance: {appearance or description}\n"
+            f"Weapons & gear: {gear or '(not listed separately; see appearance)'}\n"
+            f"Kit / moves: {kit_brief or '(not listed separately; see appearance)'}\n"
+            "Do not design stage slots. Intro/defeat/victory are also 5-frame cyan-screen action strips with no background. "
+            "Write rigorous image prompts for character action slots + 4 fx_* projectile slots, "
+            "and fill moves numbers (effect / mechanic / ailment / projectile). "
+            "The four mechanics for the same hero must differ. Do not add burn/freeze/poison texture slots."
+        )
+    else:
+        user = (
+            f"人物形象：{appearance or description}\n"
+            f"人物武器配饰：{gear or '（未单列，见形象）'}\n"
+            f"人物技能机制：{kit_brief or '（未单列，见形象）'}\n"
+            "不要设计地图槽。出场/战败/战胜也是 5 帧青屏动作条，不要背景。"
+            "请按角色动作槽 + 4 个 fx_* 弹道槽写出严谨生图提示词，并填写 moves 数值（effect / mechanic / ailment / projectile）。同一英雄四招 mechanic 必须不同。不要为燃烧/冰冻/中毒增加贴图槽。"
+        )
     try:
-        raw = infer_json(INFER_SYSTEM, user, body.vertex.to_settings())
+        raw = infer_json(i18n_prompts.hero_infer_system(locale=ui_locale()), user, body.vertex.to_settings())
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise HTTPException(502, f"推理结果不是合法 JSON：{exc}") from exc
+        raise HTTPException(502, L("推理结果不是合法 JSON：{error}", error=str(exc))) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
 
@@ -2001,9 +2056,11 @@ def infer(body: InferBody) -> dict:
             fx_subject=fx_subject_for(data, slot["id"]),
         )
     data["prompts"] = wrapped
-    zh_in = data.get("slots_zh") if isinstance(data.get("slots_zh"), dict) else {}
+    note_in = data.get("slots_zh") if isinstance(data.get("slots_zh"), dict) else {}
+    if not note_in and isinstance(data.get("slots_en"), dict):
+        note_in = data["slots_en"]
     data["prompts_zh"] = {
-        slot["id"]: str(zh_in.get(slot["id"]) or "").strip() or slot_zh_fallback(slot)
+        slot["id"]: str(note_in.get(slot["id"]) or "").strip() or slot_zh_fallback(slot)
         for slot in HERO_SLOTS
     }
     _stamp_prompt_times(data, [slot["id"] for slot in HERO_SLOTS])
@@ -2026,11 +2083,11 @@ def infer(body: InferBody) -> dict:
 def infer_slot(body: InferSlotBody) -> dict:
     _require_style_locked()
     if body.slot_id not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知槽位 {body.slot_id}")
+        raise HTTPException(400, L("未知槽位 {slot_id}", slot_id=body.slot_id))
     hero_id = _safe_id(body.hero_id)
     bible = _read_bible(hero_id)
     if not bible:
-        raise HTTPException(400, "还没有这个英雄。先写出关键帧提示词。")
+        raise HTTPException(400, L("还没有这个英雄。先写出关键帧提示词。"))
     slot = SLOT_BY_ID[body.slot_id]
     visual = bible.get("visual_lock") or ""
     fx_mode = fx_subject_for(bible, body.slot_id)
@@ -2039,40 +2096,71 @@ def infer_slot(body: InferSlotBody) -> dict:
     if body.slot_id.startswith("fx_"):
         if fx_mode == "figure":
             fx_infer_note = (
-                "这一槽是体术/骑乘/冲锋类特效：画英雄本人（含坐骑如有）完成技能，"
-                "单行 4 帧全身侧视朝右，禁止只画 detached 弹体。\n"
+                "This slot is body/ride/charge FX: draw the hero (and mount if any) completing the move, "
+                "one row of 4 full-body right-facing side-view frames; do not draw only a detached projectile.\n"
+                if ui_locale() == "en"
+                else (
+                    "这一槽是体术/骑乘/冲锋类特效：画英雄本人（含坐骑如有）完成技能，"
+                    "单行 4 帧全身侧视朝右，禁止只画 detached 弹体。\n"
+                )
             )
         elif fx_mode == "clone":
             fx_infer_note = (
-                "这一槽是分身/残影特效：画同一英雄的分身或重影，"
-                "单行 4 帧全身侧视朝右。\n"
+                "This slot is clone/afterimage FX: draw clones or echoes of the same hero, "
+                "one row of 4 full-body right-facing side-view frames.\n"
+                if ui_locale() == "en"
+                else (
+                    "这一槽是分身/残影特效：画同一英雄的分身或重影，"
+                    "单行 4 帧全身侧视朝右。\n"
+                )
             )
         else:
-            fx_infer_note = "这一槽是弹道/特效：只画该招 kit 对应的飞行物，禁止画人。\n"
-    user = (
-        f"人物形象：{bible.get('appearance') or bible.get('description') or ''}\n"
-        f"武器配饰：{bible.get('gear') or ''}\n"
-        f"技能机制：{bible.get('kit_brief') or ''}\n"
-        f"visual_lock：{visual}\n"
-        f"技能闸门：{json.dumps(bible.get('kit') or {}, ensure_ascii=False)}\n"
-        f"fx_subjects：{json.dumps(bible.get('fx_subjects') or {}, ensure_ascii=False)}\n"
-        f"要重写的槽：{body.slot_id}（{slot.get('title')}）\n"
-        f"槽位要求：{slot.get('hint')}\n"
-        f"旧提示词：{prev or '（无）'}\n"
-        f"开发者哪里不满意（必须写进新英文提示词并改掉，禁止复读旧稿）：{body.note.strip() or '（未写，请换一套分镜，不要复读旧稿）'}\n"
-        + fx_infer_note
-        + "只重写这一槽的英文生图提示词。"
-    )
+            fx_infer_note = (
+                "This slot is projectile/FX: draw only the flying object for that kit move; no people.\n"
+                if ui_locale() == "en"
+                else "这一槽是弹道/特效：只画该招 kit 对应的飞行物，禁止画人。\n"
+            )
+    if ui_locale() == "en":
+        user = (
+            f"Appearance: {bible.get('appearance') or bible.get('description') or ''}\n"
+            f"Weapons & gear: {bible.get('gear') or ''}\n"
+            f"Kit / moves: {bible.get('kit_brief') or ''}\n"
+            f"visual_lock: {visual}\n"
+            f"Kit gates: {json.dumps(bible.get('kit') or {}, ensure_ascii=False)}\n"
+            f"fx_subjects: {json.dumps(bible.get('fx_subjects') or {}, ensure_ascii=False)}\n"
+            f"Slot to rewrite: {body.slot_id} ({slot.get('title')})\n"
+            f"Slot requirements: {slot.get('hint')}\n"
+            f"Previous prompt: {prev or '(none)'}\n"
+            f"Developer dissatisfaction (must be fixed in the new English prompt; do not parrot the old draft): "
+            f"{body.note.strip() or '(none written; invent a new storyboard, do not repeat the old draft)'}\n"
+            + fx_infer_note
+            + "Rewrite only this slot's English image-generation prompt."
+        )
+    else:
+        user = (
+            f"人物形象：{bible.get('appearance') or bible.get('description') or ''}\n"
+            f"武器配饰：{bible.get('gear') or ''}\n"
+            f"技能机制：{bible.get('kit_brief') or ''}\n"
+            f"visual_lock：{visual}\n"
+            f"技能闸门：{json.dumps(bible.get('kit') or {}, ensure_ascii=False)}\n"
+            f"fx_subjects：{json.dumps(bible.get('fx_subjects') or {}, ensure_ascii=False)}\n"
+            f"要重写的槽：{body.slot_id}（{slot.get('title')}）\n"
+            f"槽位要求：{slot.get('hint')}\n"
+            f"旧提示词：{prev or '（无）'}\n"
+            f"开发者哪里不满意（必须写进新英文提示词并改掉，禁止复读旧稿）：{body.note.strip() or '（未写，请换一套分镜，不要复读旧稿）'}\n"
+            + fx_infer_note
+            + "只重写这一槽的英文生图提示词。"
+        )
     try:
-        raw = infer_json(SLOT_INFER_SYSTEM, user, body.vertex.to_settings())
+        raw = infer_json(i18n_prompts.slot_infer_system(locale=ui_locale()), user, body.vertex.to_settings())
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise HTTPException(502, f"推理结果不是合法 JSON：{exc}") from exc
+        raise HTTPException(502, L("推理结果不是合法 JSON：{error}", error=str(exc))) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
     body_prompt = str(data.get("prompt") or "").strip()
     if not body_prompt:
-        raise HTTPException(502, "这一槽没有写出新提示词。")
+        raise HTTPException(502, L("这一槽没有写出新提示词。"))
     wrapped = wrap_prompt(
         body.slot_id,
         body_prompt,
@@ -2107,7 +2195,7 @@ def infer_slot(body: InferSlotBody) -> dict:
 def delete_hero_draft(body: HeroDeleteBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     if not hero_id:
-        raise HTTPException(400, "没有 hero_id。")
+        raise HTTPException(400, L("没有 hero_id。"))
     draft_dir = paths.drafts / "heroes" / hero_id
     studio_dir = paths.studio / hero_id
     if draft_dir.exists():
@@ -2122,14 +2210,14 @@ def generate(body: GenerateBody) -> dict:
     _require_herogame()
     _require_style_locked()
     if body.slot_id not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知槽位 {body.slot_id}")
+        raise HTTPException(400, L("未知槽位 {slot_id}", slot_id=body.slot_id))
     slot = SLOT_BY_ID[body.slot_id]
     hero_id = _safe_id(body.hero_id)
     bible = _read_bible(hero_id)
     visual = body.visual_lock or bible.get("visual_lock") or ""
     prompt = body.prompt.strip()
     if not prompt:
-        raise HTTPException(400, "提示词是空的。")
+        raise HTTPException(400, L("提示词是空的。"))
     expected_frames = FRAME_SLOTS.get(body.slot_id, 1)
     if slot.get("kind") == "sprite" and expected_frames > 1:
         from prompts import enforce_strip_frame_count
@@ -2161,7 +2249,7 @@ def generate(body: GenerateBody) -> dict:
                 fx_subject="projectile",
             )
     if body.slot_id != "turnaround" and not committed_hero_png(hero_id, "turnaround"):
-        raise HTTPException(400, "请先把人物三视图采用入库，再生成其他套图。")
+        raise HTTPException(400, L("请先把人物三视图采用入库，再生成其他套图。"))
 
     blobs: list[tuple[bytes, str]] = []
     labels: list[str] = []
@@ -2424,7 +2512,7 @@ def commit_asset(body: CommitBody) -> dict:
         _require_style_unlocked()
         src = draft_style_png()
         if not src.exists():
-            raise HTTPException(400, "没有风格草稿。先生成或上传，再采用入库。")
+            raise HTTPException(400, L("没有风格草稿。先生成或上传，再采用入库。"))
         _write_commit(src, game_style_png(), keyed=False)
         src.unlink(missing_ok=True)
         refresh_index()
@@ -2435,7 +2523,7 @@ def commit_asset(body: CommitBody) -> dict:
         stage_id = _safe_id(body.stage_id)
         src = draft_stage_png(stage_id)
         if not src.exists():
-            raise HTTPException(400, "没有地图草稿。")
+            raise HTTPException(400, L("没有地图草稿。"))
         dest = game_stage_png(stage_id)
         _write_commit(src, dest, keyed=False)
         bible = _read_json(_stage_dir(stage_id) / "bible.json")
@@ -2476,7 +2564,7 @@ def commit_asset(body: CommitBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     slot_id = body.slot_id
     if slot_id not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知槽位 {slot_id}")
+        raise HTTPException(400, L("未知槽位 {slot_id}", slot_id=slot_id))
     src = draft_hero_png(hero_id, slot_id)
     if not src.exists():
         alt = source_hero_png(hero_id, slot_id)
@@ -2491,13 +2579,13 @@ def commit_asset(body: CommitBody) -> dict:
         view = _hero_asset_view(hero_id, slot_id)
         split_n = len(view.get("frames") or [])
         if split_n < 2 or view.get("frames_stale"):
-            raise HTTPException(400, "请先「一键切分」并播放确认，再入库。切分只预览，不会写入游戏。")
+            raise HTTPException(400, L("请先「一键切分」并播放确认，再入库。切分只预览，不会写入游戏。"))
         frames = split_n
         buf = BytesIO()
         assemble_split_sheet(hero_id, slot_id).save(buf, format="PNG")
         packed = buf.getvalue()
     elif not src.exists():
-        raise HTTPException(400, "没有这张草稿。先点「再出一版草稿」。")
+        raise HTTPException(400, L("没有这张草稿。先点「再出一版草稿」。"))
     _write_commit(src if src.exists() else dest, dest, keyed=apply_key, frames=frames, pack=False, raw=packed)
     if packed is not None:
         mark_split_applied(hero_id, slot_id)
@@ -2550,17 +2638,17 @@ def discard_asset(body: DiscardBody) -> dict:
 @app.post("/api/rekey")
 def rekey_asset(body: CommitBody) -> dict:
     if body.kind != "hero":
-        raise HTTPException(400, "只有英雄精灵需要重新去青。")
+        raise HTTPException(400, L("只有英雄精灵需要重新去青。"))
     hero_id = _safe_id(body.hero_id)
     slot_id = body.slot_id
     if slot_id not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知槽位 {slot_id}")
+        raise HTTPException(400, L("未知槽位 {slot_id}", slot_id=slot_id))
     slot = SLOT_BY_ID[slot_id]
     if slot.get("kind") != "sprite":
-        raise HTTPException(400, "CG 不去青。")
+        raise HTTPException(400, L("CG 不去青。"))
     dest = game_hero_png(hero_id, slot_id)
     if not dest.exists():
-        raise HTTPException(400, "这一张还没入库。请先切分确认后再点「采用入库」。")
+        raise HTTPException(400, L("这一张还没入库。请先切分确认后再点「采用入库」。"))
     saved = load_split_layout(hero_id, slot_id)
     frames = _resolve_split_frames(slot_id, None, saved)
     try:
@@ -2592,12 +2680,12 @@ def rekey_asset(body: CommitBody) -> dict:
 @app.post("/api/uncommit")
 def uncommit_asset(body: DiscardBody) -> dict:
     if body.kind == "style":
-        raise HTTPException(400, "风格锚点入库后不可更改、不可撤回。")
+        raise HTTPException(400, L("风格锚点入库后不可更改、不可撤回。"))
     if body.kind == "stage":
         stage_id = _safe_id(body.stage_id)
         src = game_stage_png(stage_id)
         if not src.exists():
-            raise HTTPException(400, "这张地图还没入库。")
+            raise HTTPException(400, L("这张地图还没入库。"))
         draft = draft_stage_png(stage_id)
         draft.parent.mkdir(parents=True, exist_ok=True)
         if not draft.exists():
@@ -2612,10 +2700,10 @@ def uncommit_asset(body: DiscardBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     slot_id = body.slot_id
     if slot_id not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知槽位 {slot_id}")
+        raise HTTPException(400, L("未知槽位 {slot_id}", slot_id=slot_id))
     src = game_hero_png(hero_id, slot_id)
     if not src.exists():
-        raise HTTPException(400, "这一张还没入库。")
+        raise HTTPException(400, L("这一张还没入库。"))
     draft = draft_hero_png(hero_id, slot_id)
     draft.parent.mkdir(parents=True, exist_ok=True)
     if not draft.exists():
@@ -2636,13 +2724,13 @@ def split_hero_slot(body: SplitBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     slot_id = body.slot_id
     if slot_id not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知槽位 {slot_id}")
+        raise HTTPException(400, L("未知槽位 {slot_id}", slot_id=slot_id))
     frames = _resolve_split_frames(slot_id, body.frames)
     if frames < 2:
-        raise HTTPException(400, "这一张不是分镜条，不用切。")
+        raise HTTPException(400, L("这一张不是分镜条，不用切。"))
     src = ensure_split_source(hero_id, slot_id)
     if not src:
-        raise HTTPException(400, "还没有图可切。先生成套图。")
+        raise HTTPException(400, L("还没有图可切。先生成套图。"))
     variant = body.variant
     if variant is None:
         variant = next_split_variant(hero_id, slot_id)
@@ -2706,7 +2794,7 @@ def hero_select_crop_source(hero_id: str, source_slot: str = "") -> dict:
     slot_pref = (source_slot or "").strip() or None
     loaded = select_source_cell(hid, source_slot=slot_pref)
     if not loaded:
-        raise HTTPException(400, "没有已入库的三视图或 idle，无法裁剪选人头像。")
+        raise HTTPException(400, L("没有已入库的三视图或 idle，无法裁剪选人头像。"))
     src_slot, cell, (sx, sy, ss) = loaded
     available: list[str] = []
     for slot in ("turnaround", "idle"):
@@ -2763,7 +2851,7 @@ def bake_hero_select_api(body: HeroBakeSelectBody) -> dict:
             crop=crop,
         )
         if not dest:
-            raise HTTPException(400, "没有已入库的三视图或 idle，无法烘焙 select.png。")
+            raise HTTPException(400, L("没有已入库的三视图或 idle，无法烘焙 select.png。"))
         return {
             "ok": True,
             "hero_id": hero_id,
@@ -2782,9 +2870,9 @@ def unify_hero_body_scale_api(body: UnifyBodyScaleBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     ref = (body.ref_slot or "idle").strip() or "idle"
     if ref.startswith("fx_"):
-        raise HTTPException(400, "不能用弹道特效作身长基准。")
+        raise HTTPException(400, L("不能用弹道特效作身长基准。"))
     if ref not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知基准槽位 {ref}")
+        raise HTTPException(400, L("未知基准槽位 {ref}", ref=ref))
     try:
         result = unify_hero_body_scale(hero_id, ref_slot=ref)
     except FileNotFoundError as exc:
@@ -2812,9 +2900,9 @@ def body_scale_chart_api(body: BodyScaleChartBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     ref = (body.ref_slot or "idle").strip() or "idle"
     if ref.startswith("fx_"):
-        raise HTTPException(400, "不能用弹道特效作身长基准。")
+        raise HTTPException(400, L("不能用弹道特效作身长基准。"))
     if ref not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知基准槽位 {ref}")
+        raise HTTPException(400, L("未知基准槽位 {ref}", ref=ref))
     try:
         chart = build_body_scale_chart(hero_id, ref_slot=ref, titles=_slot_title_map())
     except FileNotFoundError as exc:
@@ -2873,9 +2961,9 @@ def body_scale_workspace_api(body: BodyScaleWorkspaceBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     ref = (body.ref_slot or "idle").strip() or "idle"
     if ref.startswith("fx_"):
-        raise HTTPException(400, "不能用弹道特效作身长基准。")
+        raise HTTPException(400, L("不能用弹道特效作身长基准。"))
     if ref not in {s["id"] for s in HERO_SLOTS}:
-        raise HTTPException(400, f"未知基准槽位 {ref}")
+        raise HTTPException(400, L("未知基准槽位 {ref}", ref=ref))
     try:
         data = list_body_scale_workspace(hero_id, ref_slot=ref, titles=_slot_title_map())
     except FileNotFoundError as exc:
@@ -2893,9 +2981,9 @@ def body_scale_slot_api(body: BodyScaleSlotBody) -> dict:
     slot_id = body.slot_id
     ref = (body.ref_slot or "idle").strip() or "idle"
     if slot_id not in {s["id"] for s in HERO_SLOTS} or slot_id.startswith("fx_"):
-        raise HTTPException(400, f"未知或不可校对槽位 {slot_id}")
+        raise HTTPException(400, L("未知或不可校对槽位 {slot_id}", slot_id=slot_id))
     if ref.startswith("fx_"):
-        raise HTTPException(400, "不能用弹道特效作身长基准。")
+        raise HTTPException(400, L("不能用弹道特效作身长基准。"))
     try:
         return _body_scale_slot_payload(hero_id, slot_id, ref, force=bool(body.force_resplit))
     except FileNotFoundError as exc:
@@ -2912,7 +3000,7 @@ def body_scale_save_api(body: BodyScaleSaveBody) -> dict:
     slot_id = body.slot_id
     ref = (body.ref_slot or "idle").strip() or "idle"
     if slot_id not in {s["id"] for s in HERO_SLOTS} or slot_id.startswith("fx_"):
-        raise HTTPException(400, f"未知或不可校对槽位 {slot_id}")
+        raise HTTPException(400, L("未知或不可校对槽位 {slot_id}", slot_id=slot_id))
     scales: dict[int, float] = {}
     feet_dys: dict[int, int] = {}
     mirrors: dict[int, bool] = {}
@@ -2935,7 +3023,7 @@ def body_scale_save_api(body: BodyScaleSaveBody) -> dict:
         try:
             order = [int(x) for x in body.order]
         except (TypeError, ValueError) as exc:
-            raise HTTPException(400, f"帧顺序无效: {exc}") from exc
+            raise HTTPException(400, L("帧顺序无效: {error}", error=exc)) from exc
     try:
         result = save_body_scale_slot(
             hero_id,
@@ -2986,11 +3074,11 @@ async def upload_hero_ref_photo(
         }
     raw = await file.read()
     if not raw:
-        raise HTTPException(400, "空文件。")
+        raise HTTPException(400, L("空文件。"))
     try:
         im = Image.open(BytesIO(raw)).convert("RGBA")
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, f"无法读取图片：{exc}") from exc
+        raise HTTPException(400, L("无法读取图片：{error}", error=exc)) from exc
     max_side = 1536
     w, h = im.size
     if max(w, h) > max_side:
@@ -3020,7 +3108,7 @@ async def upload_hero_ref_photo(
 def clear_hero_ref_photo(body: HeroRefClearBody) -> dict:
     hid = _safe_id(body.hero_id) if body.hero_id else ""
     if not hid:
-        raise HTTPException(400, "没有 hero_id。")
+        raise HTTPException(400, L("没有 hero_id。"))
     _ref_photo_path(hid).unlink(missing_ok=True)
     bible = _read_bible(hid)
     if bible:
@@ -3037,7 +3125,7 @@ async def upload_ref(
     file: UploadFile = File(...),
 ) -> dict:
     if slot_id not in SLOT_BY_ID and slot_id != "custom":
-        raise HTTPException(400, "未知槽位")
+        raise HTTPException(400, L("未知槽位"))
     hero_id = _safe_id(hero_id)
     dest = draft_hero_png(hero_id, slot_id if slot_id != "custom" else f"custom_{int(time.time())}")
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -3045,7 +3133,7 @@ async def upload_ref(
     try:
         im = Image.open(BytesIO(raw)).convert("RGBA")
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, f"无法读取图片：{exc}") from exc
+        raise HTTPException(400, L("无法读取图片：{error}", error=exc)) from exc
     im.save(dest, format="PNG")
     return {
         "hero_id": hero_id,
@@ -3073,7 +3161,7 @@ def save_voice(body: VoiceSaveBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     bible = _read_bible(hero_id)
     if not bible:
-        raise HTTPException(400, "还没有这个英雄。先写出套图提示词。")
+        raise HTTPException(400, L("还没有这个英雄。先写出套图提示词。"))
     _apply_voice(bible, body.voice, body.has_transform)
     _write_bible(hero_id, bible)
     return {"bible": bible, "voice_assets": _voice_assets(hero_id)}
@@ -3088,7 +3176,7 @@ def infer_voice(body: VoiceInferBody) -> dict:
         or _compose_brief(bible.get("appearance", ""), bible.get("gear", ""), bible.get("kit_brief", ""), bible.get("description", ""))
     ).strip()
     if not description:
-        raise HTTPException(400, "先写人物形象，或打开一个已有英雄。")
+        raise HTTPException(400, L("先写人物形象，或打开一个已有英雄。"))
     kit = bible.get("kit") or {}
     form = body.voice or {}
     voice_prev = bible.get("voice") or {}
@@ -3099,31 +3187,49 @@ def infer_voice(body: VoiceInferBody) -> dict:
 
     lang_hint = VOICE_LANGUAGES.get(lang, lang)
     age_hint = VOICE_AGES.get(age, age)
-    gender_line = f"性别倾向：{gender}\n" if gender else ""
-    user = (
-        f"人物形象：{bible.get('appearance') or description}\n"
-        f"武器配饰：{bible.get('gear') or '（见形象）'}\n"
-        f"技能机制：{bible.get('kit_brief') or '（见形象）'}\n"
-        f"中文名：{bible.get('display_name') or '（待定）'}\n"
-        f"定位：{bible.get('one_liner') or '（待定）'}\n"
-        f"台词语言：{lang_hint}（代码 {lang}）\n"
-        f"说话人年龄：{age_hint}\n"
-        f"{gender_line}"
-        f"技能：地面普攻 {kit.get('attack') or '（无）'}；空中普攻 {kit.get('air_attack') or '（无）'}；"
-        f"上+普攻 {kit.get('attack_up') or '（无）'}；下+普攻 {kit.get('attack_down') or '（无）'}；"
-        f"地面小技能 {kit.get('skill') or '（无）'}；上+技能 {kit.get('combo_up') or kit.get('combo') or '（无）'}；"
-        f"下+技能 {kit.get('combo_down') or '（无）'}；奥义 {kit.get('super') or '（无）'}\n"
-        "不要写变身台词。请写出台词。"
-    )
+    if ui_locale() == "en":
+        gender_line = f"Gender lean: {gender}\n" if gender else ""
+        user = (
+            f"Appearance: {bible.get('appearance') or description}\n"
+            f"Weapons & gear: {bible.get('gear') or '(see appearance)'}\n"
+            f"Kit / moves: {bible.get('kit_brief') or '(see appearance)'}\n"
+            f"Display name: {bible.get('display_name') or '(TBD)'}\n"
+            f"One-liner: {bible.get('one_liner') or '(TBD)'}\n"
+            f"Line language: {lang_hint} (code {lang})\n"
+            f"Speaker age: {age_hint}\n"
+            f"{gender_line}"
+            f"Kit: ground normal {kit.get('attack') or '(none)'}; air normal {kit.get('air_attack') or '(none)'}; "
+            f"up+normal {kit.get('attack_up') or '(none)'}; down+normal {kit.get('attack_down') or '(none)'}; "
+            f"ground skill {kit.get('skill') or '(none)'}; up+skill {kit.get('combo_up') or kit.get('combo') or '(none)'}; "
+            f"down+skill {kit.get('combo_down') or '(none)'}; super {kit.get('super') or '(none)'}\n"
+            "Do not write transform lines. Write the voice lines."
+        )
+    else:
+        gender_line = f"性别倾向：{gender}\n" if gender else ""
+        user = (
+            f"人物形象：{bible.get('appearance') or description}\n"
+            f"武器配饰：{bible.get('gear') or '（见形象）'}\n"
+            f"技能机制：{bible.get('kit_brief') or '（见形象）'}\n"
+            f"中文名：{bible.get('display_name') or '（待定）'}\n"
+            f"定位：{bible.get('one_liner') or '（待定）'}\n"
+            f"台词语言：{lang_hint}（代码 {lang}）\n"
+            f"说话人年龄：{age_hint}\n"
+            f"{gender_line}"
+            f"技能：地面普攻 {kit.get('attack') or '（无）'}；空中普攻 {kit.get('air_attack') or '（无）'}；"
+            f"上+普攻 {kit.get('attack_up') or '（无）'}；下+普攻 {kit.get('attack_down') or '（无）'}；"
+            f"地面小技能 {kit.get('skill') or '（无）'}；上+技能 {kit.get('combo_up') or kit.get('combo') or '（无）'}；"
+            f"下+技能 {kit.get('combo_down') or '（无）'}；奥义 {kit.get('super') or '（无）'}\n"
+            "不要写变身台词。请写出台词。"
+        )
     try:
-        data = json.loads(infer_json(VOICE_INFER_SYSTEM, user, body.vertex.to_settings()))
+        data = json.loads(infer_json(i18n_prompts.voice_infer_system(locale=ui_locale()), user, body.vertex.to_settings()))
     except json.JSONDecodeError as exc:
-        raise HTTPException(502, f"台词结果不是合法 JSON：{exc}") from exc
+        raise HTTPException(502, L("台词结果不是合法 JSON：{error}", error=str(exc))) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
 
     if not hero_id:
-        raise HTTPException(400, "先写出套图提示词，生成 hero_id 后再写台词。")
+        raise HTTPException(400, L("先写出套图提示词，生成 hero_id 后再写台词。"))
     data["tts_language"] = lang
     data["voice_age"] = age
     data["tts_voice"] = form.get("tts_voice") or voice_prev.get("tts_voice") or data.get("tts_voice") or ""
@@ -3144,7 +3250,7 @@ def infer_voice(body: VoiceInferBody) -> dict:
 def _save_voice_into_bible(hero_id: str, voice: dict, has_transform: bool) -> dict:
     bible = _read_bible(hero_id)
     if not bible:
-        raise HTTPException(400, "还没有这个英雄。先写出套图提示词。")
+        raise HTTPException(400, L("还没有这个英雄。先写出套图提示词。"))
     prev = bible.get("voice") or {}
     _apply_voice(bible, voice or bible.get("voice"), has_transform)
     _preserve_clone(bible["voice"], prev)
@@ -3164,19 +3270,19 @@ async def clone_voice(
     hero_id = _safe_id(hero_id)
     bible = _read_bible(hero_id)
     if not bible:
-        raise HTTPException(400, "还没有这个英雄。先写出套图提示词或保存进度。")
+        raise HTTPException(400, L("还没有这个英雄。先写出套图提示词或保存进度。"))
     if reference is None:
-        raise HTTPException(400, "请上传或录制一段音色样本。")
+        raise HTTPException(400, L("请上传或录制一段音色样本。"))
     ref_bytes = await reference.read()
     consent_bytes = await consent.read() if consent is not None else b""
     if (same_clip in {"1", "true", "yes"} or not consent_bytes) and ref_bytes:
         consent_bytes = consent_bytes or ref_bytes
     if not consent_bytes:
-        raise HTTPException(400, "请再传一段授权口播（须朗读授权文案），或勾选「用同一段录音」。")
+        raise HTTPException(400, L("请再传一段授权口播（须朗读授权文案），或勾选「用同一段录音」。"))
     try:
         from tts_client import audio_encoding_for, generate_clone_key
     except ImportError as exc:
-        raise HTTPException(500, "未安装 Cloud TTS 库。请安装 studio/requirements.txt") from exc
+        raise HTTPException(500, L("未安装 Cloud TTS 库。请安装 studio/requirements.txt")) from exc
     ref_enc = audio_encoding_for(reference.filename or "", reference.content_type or "")
     consent_enc = audio_encoding_for(
         (consent.filename if consent is not None else reference.filename) or "",
@@ -3220,7 +3326,7 @@ def clear_clone_voice(body: HeroSaveBody) -> dict:
     hero_id = _safe_id(body.hero_id)
     bible = _read_bible(hero_id)
     if not bible:
-        raise HTTPException(400, "还没有这个英雄。")
+        raise HTTPException(400, L("还没有这个英雄。"))
     voice = bible.get("voice") or {}
     voice["clone_key"] = ""
     voice["clone_ready"] = False
@@ -3236,16 +3342,16 @@ def clear_clone_voice(body: HeroSaveBody) -> dict:
 @app.post("/api/tts/speak")
 def tts_speak(body: TtsSpeakBody) -> dict:
     if body.line_id not in {s["id"] for s in VOICE_LINES}:
-        raise HTTPException(400, f"未知台词槽 {body.line_id}")
+        raise HTTPException(400, L("未知台词槽 {line_id}", line_id=body.line_id))
     hero_id = _safe_id(body.hero_id)
     bible = _save_voice_into_bible(hero_id, body.voice, body.has_transform) if body.voice else _read_bible(hero_id)
     if not bible:
-        raise HTTPException(400, "还没有这个英雄。")
+        raise HTTPException(400, L("还没有这个英雄。"))
     voice = bible.get("voice") or {}
     item = parse_line((voice.get("lines") or {}).get(body.line_id))
     text = (body.text or item.get("text") or "").strip()
     if not text:
-        raise HTTPException(400, "这句台词是空的。")
+        raise HTTPException(400, L("这句台词是空的。"))
     tts_voice = body.tts_voice or voice.get("tts_voice") or "Charon"
     settings = merge_settings(None)
     _voices, _probe, synthesize = _tts()
@@ -3296,7 +3402,7 @@ def commit_voice(body: VoiceCommitBody) -> dict:
         if item.get("text"):
             nonempty.append((slot["id"], item))
     if not nonempty:
-        raise HTTPException(400, "没有可入库的台词。")
+        raise HTTPException(400, L("没有可入库的台词。"))
     settings = merge_settings(None)
     tts_voice = voice.get("tts_voice") or "Charon"
     _voices, _probe, synthesize = _tts()
@@ -3324,7 +3430,7 @@ def commit_voice(body: VoiceCommitBody) -> dict:
                 voice_age=voice.get("voice_age") or "adult",
             )
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(502, f"{line_id} 合成失败：{exc}") from exc
+            raise HTTPException(502, L("{line_id} 合成失败：{error}", line_id=line_id, error=exc)) from exc
         dest_draft = _voice_output_path(dest_draft, audio)
         write_bytes(dest_draft, audio)
         dest = _voice_output_path(game_voice_mp3(hero_id, line_id), audio)
@@ -3480,7 +3586,7 @@ def get_portrait(portrait_id: str) -> dict:
     pid = _safe_id(portrait_id)
     bible = read_portrait_bible(pid)
     if not bible:
-        raise HTTPException(404, "没有这个立绘角色。")
+        raise HTTPException(404, L("没有这个立绘角色。"))
     return _portrait_payload(pid, bible)
 
 
@@ -3495,7 +3601,7 @@ def create_or_open_portrait(body: PortraitCreateBody) -> dict:
         bible = read_portrait_bible(pid) or {"portrait_id": pid, "prompts": {}}
     else:
         if len(appearance) < 2:
-            raise HTTPException(400, "先写人物形象，或打开已有立绘。")
+            raise HTTPException(400, L("先写人物形象，或打开已有立绘。"))
         pid = _safe_id(body.display_name or appearance)
         bible = read_portrait_bible(pid) or {"portrait_id": pid, "prompts": {}}
     if appearance:
@@ -3526,9 +3632,9 @@ def save_portrait(body: PortraitSaveBody) -> dict:
     pid = _safe_id(body.portrait_id)
     bible = read_portrait_bible(pid)
     if not bible:
-        raise HTTPException(404, "没有这个立绘角色。")
+        raise HTTPException(404, L("没有这个立绘角色。"))
     if body.expected_revision is not None and body.expected_revision != _portrait_revision(bible):
-        raise HTTPException(409, "这份立绘已在其他操作或窗口中更新。请先复制保留当前编辑，再重新打开立绘后合并修改。")
+        raise HTTPException(409, L("这份立绘已在其他操作或窗口中更新。请先复制保留当前编辑，再重新打开立绘后合并修改。"))
     if body.appearance.strip():
         bible["appearance"] = body.appearance.strip()
     if body.gear.strip() or "gear" in bible:
@@ -3584,7 +3690,7 @@ def reveal_path(body: RevealPathBody) -> dict:
             folder = export_portrait_dir(pid)
         target = str(folder)
     if not target:
-        raise HTTPException(400, "缺少要打开的路径。")
+        raise HTTPException(400, L("缺少要打开的路径。"))
     try:
         return reveal_in_file_manager(target)
     except FileNotFoundError as exc:
@@ -3608,7 +3714,7 @@ def infer_portrait(body: PortraitInferBody) -> dict:
     if not gear:
         gear = str(existing.get("gear") or "")
     if len(appearance) < 2:
-        raise HTTPException(400, "请填写人物形象。")
+        raise HTTPException(400, L("请填写人物形象。"))
 
     if body.slots:
         plan_slots = _portrait_slots_from_specs(body.slots, fallback_all=False)
@@ -3620,23 +3726,32 @@ def infer_portrait(body: PortraitInferBody) -> dict:
             fallback_all=False,
         )
     if not plan_slots:
-        raise HTTPException(400, "请至少选择一个套图类别。")
+        raise HTTPException(400, L("请至少选择一个套图类别。"))
     motion = [s for s in plan_slots if s["id"] != "turnaround"]
     if motion and not any(s["id"] == "turnaround" for s in plan_slots):
-        raise HTTPException(400, "有动作条时必须先包含「人物三视图」以锁定外形。")
+        raise HTTPException(400, L("有动作条时必须先包含「人物三视图」以锁定外形。"))
 
-    slot_lines = "\n".join(f"- {s['id']} / {s['title']} / {s['frames']} 帧" for s in plan_slots)
-    user = (
-        f"人物形象：{appearance}\n"
-        f"人物配饰：{gear or '（未单列）'}\n"
-        "这是桌宠/立绘小人，不是格斗角色。不要技能机制、不要战斗招式。\n"
-        f"开发者已指定套图清单（只写这些，不要增删）：\n{slot_lines}"
-    )
+    if ui_locale() == "en":
+        slot_lines = "\n".join(f"- {s['id']} / {s['title']} / {s['frames']} frames" for s in plan_slots)
+        user = (
+            f"Appearance: {appearance}\n"
+            f"Accessories: {gear or '(not listed separately)'}\n"
+            "This is a desk-pet / portrait figure, not a fighter. No kit mechanics, no combat moves.\n"
+            f"Developer sheet list (write only these; do not add or remove):\n{slot_lines}"
+        )
+    else:
+        slot_lines = "\n".join(f"- {s['id']} / {s['title']} / {s['frames']} 帧" for s in plan_slots)
+        user = (
+            f"人物形象：{appearance}\n"
+            f"人物配饰：{gear or '（未单列）'}\n"
+            "这是桌宠/立绘小人，不是格斗角色。不要技能机制、不要战斗招式。\n"
+            f"开发者已指定套图清单（只写这些，不要增删）：\n{slot_lines}"
+        )
     try:
-        raw = infer_json(portrait_infer_system_for(plan_slots), user, body.vertex.to_settings())
+        raw = infer_json(i18n_prompts.portrait_infer_system_for(plan_slots, locale=ui_locale()), user, body.vertex.to_settings())
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise HTTPException(502, f"推理结果不是合法 JSON：{exc}") from exc
+        raise HTTPException(502, L("推理结果不是合法 JSON：{error}", error=str(exc))) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
 
@@ -3687,14 +3802,14 @@ def infer_portrait_slot(body: PortraitInferSlotBody) -> dict:
     pid = _safe_id(body.portrait_id)
     bible = read_portrait_bible(pid)
     if not bible:
-        raise HTTPException(400, "还没有这个立绘。先写出动作提示词。")
+        raise HTTPException(400, L("还没有这个立绘。先写出动作提示词。"))
     plan_slots = resolve_portrait_slots(bible, fallback_all=True)
     slot = next((s for s in plan_slots if s["id"] == body.slot_id), None)
     if not slot:
         if body.slot_id in PORTRAIT_SLOT_IDS:
             slot = normalize_portrait_slot({"id": body.slot_id})
         else:
-            raise HTTPException(400, f"未知立绘槽位 {body.slot_id}。")
+            raise HTTPException(400, L("未知立绘槽位 {slot_id}。", slot_id=body.slot_id))
     normalize_portrait_slot(slot)
     visual = bible.get("visual_lock") or ""
     # A micro-tune is scoped to one slot, but it must use the immutable base
@@ -3704,34 +3819,47 @@ def infer_portrait_slot(body: PortraitInferSlotBody) -> dict:
     prev = _clean_portrait_motion_prompt((bible.get("prompts") or {}).get(body.slot_id) or "")
     frames_n = portrait_slot_frame_count(body.slot_id, bible)
     note = (body.note or "").strip()
-    user = (
-        f"人物形象：{bible.get('appearance') or ''}\n"
-        f"人物配饰：{bible.get('gear') or '（未单列）'}\n"
-        f"visual_lock：{visual}\n"
-        f"要重写的槽：{body.slot_id}（{slot.get('title') or body.slot_id}）· exactly {frames_n} 帧\n"
-        f"槽位要求：{slot.get('hint') or ''}\n"
-        f"旧提示词：{prev or '（无）'}\n"
-        f"开发者哪里不满意（必须写进新英文提示词并改掉，禁止复读旧稿）："
-        f"{note or '（未写，请换一套分镜，不要复读旧稿）'}\n"
-        "这是桌宠/立绘小人，不是格斗角色。只重写这一槽的英文生图提示词。"
-    )
+    if ui_locale() == "en":
+        user = (
+            f"Appearance: {bible.get('appearance') or ''}\n"
+            f"Accessories: {bible.get('gear') or '(not listed separately)'}\n"
+            f"visual_lock: {visual}\n"
+            f"Slot to rewrite: {body.slot_id} ({slot.get('title') or body.slot_id}) · exactly {frames_n} frames\n"
+            f"Slot requirements: {slot.get('hint') or ''}\n"
+            f"Previous prompt: {prev or '(none)'}\n"
+            f"Developer dissatisfaction (must be fixed in the new English prompt; do not parrot the old draft): "
+            f"{note or '(none written; invent a new storyboard, do not repeat the old draft)'}\n"
+            "This is a desk-pet / portrait figure, not a fighter. Rewrite only this slot's English image-generation prompt."
+        )
+    else:
+        user = (
+            f"人物形象：{bible.get('appearance') or ''}\n"
+            f"人物配饰：{bible.get('gear') or '（未单列）'}\n"
+            f"visual_lock：{visual}\n"
+            f"要重写的槽：{body.slot_id}（{slot.get('title') or body.slot_id}）· exactly {frames_n} 帧\n"
+            f"槽位要求：{slot.get('hint') or ''}\n"
+            f"旧提示词：{prev or '（无）'}\n"
+            f"开发者哪里不满意（必须写进新英文提示词并改掉，禁止复读旧稿）："
+            f"{note or '（未写，请换一套分镜，不要复读旧稿）'}\n"
+            "这是桌宠/立绘小人，不是格斗角色。只重写这一槽的英文生图提示词。"
+        )
     try:
-        raw = infer_json(PORTRAIT_SLOT_INFER_SYSTEM, user, body.vertex.to_settings())
+        raw = infer_json(i18n_prompts.portrait_slot_infer_system(locale=ui_locale()), user, body.vertex.to_settings())
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise HTTPException(502, f"推理结果不是合法 JSON：{exc}") from exc
+        raise HTTPException(502, L("推理结果不是合法 JSON：{error}", error=str(exc))) from exc
     except Exception as exc:  # noqa: BLE001
         msg = str(exc).strip() or exc.__class__.__name__
-        raise HTTPException(502, f"微调提示词失败：{msg}") from exc
+        raise HTTPException(502, L("微调提示词失败：{message}", message=msg)) from exc
     if not isinstance(data, dict):
-        raise HTTPException(502, "推理结果格式不对，请重试。")
+        raise HTTPException(502, L("推理结果格式不对，请重试。"))
     body_prompt = str(data.get("prompt") or "").strip()
     if not body_prompt and isinstance(data.get("prompts"), dict):
         body_prompt = str(data["prompts"].get(body.slot_id) or "").strip()
     if not body_prompt and isinstance(data.get("prompt"), dict):
         body_prompt = str(data["prompt"].get("en") or data["prompt"].get("text") or "").strip()
     if not body_prompt:
-        raise HTTPException(502, "这一槽没有写出新提示词。请重试或换个说法描述不满意的点。")
+        raise HTTPException(502, L("这一槽没有写出新提示词。请重试或换个说法描述不满意的点。"))
     wrapped = wrap_prompt(
         body.slot_id,
         body_prompt,
@@ -3777,7 +3905,7 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
         if body.slot_id in PORTRAIT_SLOT_IDS:
             slot = normalize_portrait_slot({"id": body.slot_id, "frames": body.frames})
         else:
-            raise HTTPException(400, f"未知立绘槽位 {body.slot_id}。请先在套图清单里勾选。")
+            raise HTTPException(400, L("未知立绘槽位 {slot_id}。请先在套图清单里勾选。", slot_id=body.slot_id))
     if body.frames:
         # `body.frames` comes from the currently edited plan picker and is an
         # explicit base-strip request.  Do not let an older slot's preserved
@@ -3788,7 +3916,7 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
     visual = body.visual_lock or bible.get("visual_lock") or ""
     prompt = (body.prompt or "").strip() or str((bible.get("prompts") or {}).get(body.slot_id) or "").strip()
     if not prompt:
-        raise HTTPException(400, "提示词是空的。先点「写出提示词」。")
+        raise HTTPException(400, L("提示词是空的。先点「写出提示词」。"))
     # Never read a final body-scale timeline as a request to draw more people.
     # portrait_slot_frame_count also migrates old ambiguous `frames: 8` slots.
     expected = portrait_slot_frame_count(body.slot_id, bible)
@@ -3831,7 +3959,7 @@ def generate_portrait(body: PortraitGenerateBody) -> dict:
 
     needs_turnaround = body.slot_id != "turnaround" and any(s["id"] == "turnaround" for s in plan_slots)
     if needs_turnaround and not bible.get("turnaround_locked_at"):
-        raise HTTPException(400, "请先确认并锁定人物三视图，再画其他动作。")
+        raise HTTPException(400, L("请先确认并锁定人物三视图，再画其他动作。"))
 
     blobs: list[tuple[bytes, str]] = []
     labels: list[str] = []
@@ -3987,7 +4115,7 @@ def lock_portrait_turnaround(body: PortraitLockTurnaroundBody) -> dict:
     pid = _safe_id(body.portrait_id)
     bible = read_portrait_bible(pid)
     if not bible or not draft_portrait_png(pid, "turnaround").exists():
-        raise HTTPException(400, "请先生成满意的人物三视图。")
+        raise HTTPException(400, L("请先生成满意的人物三视图。"))
     bible["turnaround_locked_at"] = time.time()
     write_portrait_bible(pid, bible)
     return _portrait_payload(pid, bible)
@@ -3999,7 +4127,7 @@ def adopt_candidate(body: PortraitCandidateBody) -> dict:
     pid = _safe_id(body.portrait_id)
     bible = read_portrait_bible(pid)
     if not bible:
-        raise HTTPException(404, "没有这个立绘。")
+        raise HTTPException(404, L("没有这个立绘。"))
     try:
         adopt_portrait_candidate(pid, body.slot_id, int(body.candidate))
     except ValueError as exc:
@@ -4028,7 +4156,7 @@ def split_portrait(body: PortraitSplitBody) -> dict:
     bible = read_portrait_bible(pid) or {}
     plan_slots = resolve_portrait_slots(bible, fallback_all=True)
     if body.slot_id not in {s["id"] for s in plan_slots} and body.slot_id not in PORTRAIT_SLOT_IDS:
-        raise HTTPException(400, f"未知立绘槽位 {body.slot_id}")
+        raise HTTPException(400, L("未知立绘槽位 {slot_id}", slot_id=body.slot_id))
     n = body.frames
     if n is None:
         n = portrait_slot_frame_count(body.slot_id, bible)
@@ -4037,7 +4165,7 @@ def split_portrait(body: PortraitSplitBody) -> dict:
     if quality.get("pipeline") is not None and not quality.get("passed") and not existing.get("timeline_final"):
         raise HTTPException(
             409,
-            "这版草稿的格数/布局质检未通过，已阻止切分，避免把多人物错误切成动画帧。请再出一版草稿或改用通过质检的候选。",
+            L("这版草稿的格数/布局质检未通过，已阻止切分，避免把多人物错误切成动画帧。请再出一版草稿或改用通过质检的候选。"),
         )
     try:
         split_portrait_strip(
@@ -4067,7 +4195,7 @@ def export_portrait(body: PortraitExportBody) -> dict:
     pid = _safe_id(body.portrait_id)
     bible = read_portrait_bible(pid) or {}
     if not bible:
-        raise HTTPException(404, "没有这个立绘角色。")
+        raise HTTPException(404, L("没有这个立绘角色。"))
     plan_slots = resolve_portrait_slots(bible, fallback_all=True)
     slot_ids = [body.slot_id] if body.slot_id else [s["id"] for s in plan_slots]
     results = []
@@ -4075,7 +4203,7 @@ def export_portrait(body: PortraitExportBody) -> dict:
     allowed = {s["id"] for s in plan_slots} | set(PORTRAIT_SLOT_IDS)
     for sid in slot_ids:
         if sid not in allowed:
-            errors.append({"slot_id": sid, "error": f"未知立绘槽位 {sid}"})
+            errors.append({"slot_id": sid, "error": L("未知立绘槽位 {slot_id}", slot_id=sid)})
             continue
         try:
             results.append(export_portrait_slot(pid, sid, strict=bool(body.strict), bible=bible))
@@ -4100,7 +4228,7 @@ def discard_portrait(body: PortraitDiscardBody) -> dict:
     bible = read_portrait_bible(pid) or {}
     plan_slots = resolve_portrait_slots(bible, fallback_all=True)
     if body.slot_id not in {s["id"] for s in plan_slots} and body.slot_id not in PORTRAIT_SLOT_IDS:
-        raise HTTPException(400, f"未知立绘槽位 {body.slot_id}")
+        raise HTTPException(400, L("未知立绘槽位 {slot_id}", slot_id=body.slot_id))
     view = discard_portrait_slot(pid, body.slot_id)
     return {
         "portrait_id": pid,
@@ -4115,13 +4243,13 @@ def delete_portrait_api(body: PortraitDeleteBody) -> dict:
     _require_deskpet()
     pid = _safe_id(body.portrait_id)
     if not pid:
-        raise HTTPException(400, "没有 portrait_id。")
+        raise HTTPException(400, L("没有 portrait_id。"))
     if not read_portrait_bible(pid) and not (paths.drafts / "portraits" / pid).exists():
         # still allow cleaning orphan export/draft folders
         if not (paths.studio / "exports" / "portraits" / pid).exists() and not (
             paths.studio / "portraits" / pid
         ).exists():
-            raise HTTPException(404, "没有这个立绘角色。")
+            raise HTTPException(404, L("没有这个立绘角色。"))
     try:
         result = delete_portrait(pid)
     except ValueError as exc:
@@ -4204,7 +4332,7 @@ def portrait_body_scale_save_api(body: PortraitBodyScaleSaveBody) -> dict:
         try:
             order = [int(x) for x in body.order]
         except (TypeError, ValueError) as exc:
-            raise HTTPException(400, f"帧顺序无效: {exc}") from exc
+            raise HTTPException(400, L("帧顺序无效: {error}", error=exc)) from exc
     try:
         result = save_portrait_body_scale_slot(
             pid,

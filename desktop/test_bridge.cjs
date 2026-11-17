@@ -28,6 +28,10 @@ test('desktop preferences restore across ports and never persist API key fields'
   assert.equal(app.messages.length,1);
   app.window.localStorage.setItem('herogame.splitFrames.sample.idle','12');
   assert.equal(app.messages[1].value,'12');
+  app.window.localStorage.setItem('herogame.studio.locale','en');
+  assert.equal(app.messages[2].value,'en');
+  app.window.localStorage.setItem('herogame.studio.locale','fr');
+  assert.equal(app.messages.length,3);
 });
 
 test('folder selection is native only for the owned local endpoint', async () => {

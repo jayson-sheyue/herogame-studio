@@ -22,7 +22,8 @@ test('opening the HTML file shows startup help without starting the app script',
     } else {
       assert.equal(document.documentElement.dataset.launchMode, undefined);
       assert.equal(appended.length, 1);
-      assert.match(appended[0].src, /^\/static\/app\.js\?v=/);
+      assert.match(appended[0].src, /^\/static\/i18n\.js\?v=/);
+      assert.match(html, /\/static\/app\.js\?v=/);
     }
   }
 });

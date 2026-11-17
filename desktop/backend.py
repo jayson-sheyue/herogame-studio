@@ -15,6 +15,14 @@ import uvicorn
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "studio"))
 
 
+def msg(zh: str, en: str) -> str:
+    locale = os.environ.get("STUDIO_UI_LOCALE", "").strip()
+    if not locale:
+        accept = os.environ.get("HTTP_ACCEPT_LANGUAGE", "") or ""
+        locale = "en" if accept.lower().startswith("en") else "zh-CN"
+    return en if locale == "en" else zh
+
+
 class DesktopAccess:
     """A session cookie prevents unrelated local pages from using this backend."""
 
@@ -48,7 +56,7 @@ class DesktopAccess:
 def main():
     token = os.environ.pop("STUDIO_DESKTOP_TOKEN", "")
     if len(token) < 32 or not os.environ.get("STUDIO_DATA_DIR"):
-        raise SystemExit("请从作图工坊客户端启动。")
+        raise SystemExit(msg("请从作图工坊客户端启动。", "Please launch from the Hero Studio desktop client."))
     parent = os.getppid()
     import server
     app = DesktopAccess(server.app, token)
@@ -91,6 +99,9 @@ if __name__ == "__main__":
         assert Path(os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"]).is_file()
         assert type(keyring.get_keyring()).__module__.startswith("keyring.backends.macOS")
         assert grpc.ssl_channel_credentials() is not None
-        print("内置运行时、公共 CA 证书、gRPC、TTS 与 macOS 钥匙串后端可用。未访问用户凭据。")
+        print(msg(
+            "内置运行时、公共 CA 证书、gRPC、TTS 与 macOS 钥匙串后端可用。未访问用户凭据。",
+            "Bundled runtime, public CA certs, gRPC, TTS, and macOS keyring backend are available. User credentials were not accessed.",
+        ))
     else:
         main()

@@ -1,8 +1,12 @@
 # 作图工坊
 
+**中文** | [English](README.en.md)
+
 <img src="studio/static/brand-icon.svg" width="80" height="80" alt="作图工坊：铜金色立体像素 H 标识" />
 
 本地像素资产工坊，支持 macOS 桌面客户端与源码网页运行：用自己的 Vertex AI Express / Google AI Studio API Key 制作像素格斗套图和桌宠立绘（提示词 → 出图 → 切分 → 入库或导出）。**不含对战游戏。**
+
+界面支持 **中文（默认）** 与 **English**：在左侧 **API Key 设置 → 界面语言** 切换；选择会保存在本机。切换后，工坊文案、接口错误提示，以及发给模型的系统提示词会一并跟随界面语言。台词配音的「台词语言」仍是独立选项，与界面语言无关。
 
 公开仓库：<https://github.com/jayson-sheyue/herogame-studio>  
 对战端另仓：<https://github.com/jayson-sheyue/herogame>
@@ -13,7 +17,7 @@
 
 ## macOS 客户端（测试版）
 
-从 [GitHub 测试版发布页](https://github.com/jayson-sheyue/herogame-studio/releases/tag/v0.1.0-beta.3) 下载。Apple Silicon（M 系列芯片）／macOS 15 或更高版本：打开 `HeroGameStudio-0.1.0-beta.3-macOS-arm64.dmg`，将 **作图工坊.app** 拖入 **Applications** 后启动。内置 Python、依赖和本地服务，无需安装 Python、Node 或 gcloud，也不必保持终端开启。选择产品线与工程文件夹后，在 **API Key 设置**中输入自己的密钥。
+从 [GitHub 测试版发布页](https://github.com/jayson-sheyue/herogame-studio/releases/tag/v0.1.0-beta.4) 下载。Apple Silicon（M 系列芯片）／macOS 15 或更高版本：打开 `HeroGameStudio-0.1.0-beta.4-macOS-arm64.dmg`，将 **作图工坊.app** 拖入 **Applications** 后启动。内置 Python、依赖和本地服务，无需安装 Python、Node 或 gcloud，也不必保持终端开启。选择产品线与工程文件夹后，在 **API Key 设置**中输入自己的密钥；需要英文界面时在同一面板切换 **界面语言**。
 
 客户端使用原生 macOS 窗口、文件选择和保存对话框；关闭窗口即退出，任务或未保存修改会先提示。下载取消不会显示保存成功；客户端退出后只停止自己启动的服务，不影响原有网页服务。
 
@@ -22,7 +26,7 @@
 - 密钥默认仅本次会话有效，正常退出后清除；主动记住时使用 macOS 钥匙串。应用升级保持 Bundle ID 和设置路径不变。
 - 手动升级：等待任务完成、正常退出，再替换应用。保留应用数据目录及工程；备份时复制整个工程文件夹。删除 `.app` 不会删除工程。
 
-这是预发布测试包，只做 ad-hoc 完整性签名，**尚未做 Developer ID 签名与 Apple 公证**，从网络取得的副本可能被 Gatekeeper 拦截，仅供测试，不作为已公证稳定版。已验证范围与源码构建说明见 [macOS 桌面交付说明](desktop/README.md)。
+这是预发布测试包，只做 ad-hoc 完整性签名，**尚未做 Developer ID 签名与 Apple 公证**，从网络取得的副本可能被 Gatekeeper 拦截，仅供测试，不作为已公证稳定版。已验证范围与源码构建说明见 [macOS 桌面交付说明](desktop/README.md)。本仓库采用 [MIT](LICENSE) 开源协议。
 
 ## 源码网页运行
 

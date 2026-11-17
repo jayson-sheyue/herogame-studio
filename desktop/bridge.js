@@ -4,9 +4,10 @@
   const pending = new Map();
   const prefs = { ...(window.__studioPreferences || {}) };
   delete window.__studioPreferences;
-  const allowed = (key) => key.startsWith('herogame.studio.session:') || key.startsWith('herogame.splitFrames.');
+  const allowed = (key) => key === 'herogame.studio.locale' || key.startsWith('herogame.studio.session:') || key.startsWith('herogame.splitFrames.');
   const clean = (key, value) => {
     if (!allowed(key)) return null;
+    if (key === 'herogame.studio.locale') return /^(zh-CN|en)$/.test(value) ? value : null;
     if (key.startsWith('herogame.splitFrames.')) return /^\d{1,3}$/.test(value) ? value : null;
     try {
       const input = JSON.parse(value);

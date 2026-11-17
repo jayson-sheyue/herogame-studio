@@ -2,6 +2,74 @@ import AppKit
 import WebKit
 import UniformTypeIdentifiers
 
+private let englishUI: [String: String] = [
+    "作图工坊": "Hero Studio",
+    "正在启动作图工坊…": "Starting Hero Studio…",
+    "重新启动": "Restart",
+    "关于作图工坊": "About Hero Studio",
+    "隐藏作图工坊": "Hide Hero Studio",
+    "退出作图工坊": "Quit Hero Studio",
+    "编辑": "Edit",
+    "撤销": "Undo",
+    "重做": "Redo",
+    "剪切": "Cut",
+    "复制": "Copy",
+    "粘贴": "Paste",
+    "全选": "Select All",
+    "窗口": "Window",
+    "最小化": "Minimize",
+    "关闭窗口": "Close Window",
+    "显示作图工坊": "Show Hero Studio",
+    "本地像素游戏资产与桌宠立绘工坊\nAPI Key 由你提供 · 工程保存在所选文件夹\n手动更新：退出后替换应用，工程与设置保留\n测试版 · 尚未通过 Apple 公证":
+        "Local pixel-game asset and desk-pet portrait studio\nYou provide the API key · Projects live in the folder you choose\nManual updates: quit, replace the app; projects and settings stay\nBeta · Not notarized by Apple",
+    "本地服务已停止。已保存的工程仍在原文件夹，请重新启动。":
+        "Local service stopped. Saved projects remain in their folders. Please restart.",
+    "启动超时。请确认应用已完整复制到本机，再重新启动。":
+        "Startup timed out. Confirm the app was copied completely, then restart.",
+    "无法启动内置服务。请确认应用完整、数据目录可写，再重新启动。":
+        "Could not start the built-in service. Confirm the app is complete and the data folder is writable, then restart.",
+    "内置服务启动异常，请重新安装应用。":
+        "Built-in service failed to start. Please reinstall the app.",
+    "无法打开工作区。请重新启动应用。":
+        "Could not open the workspace. Please restart the app.",
+    "无效的客户端请求": "Invalid client request",
+    "选择文件夹": "Choose Folder",
+    "选择工程文件夹": "Choose a project folder",
+    "另一个文件正在保存，请稍候。": "Another file is being saved. Please wait.",
+    "不支持的客户端请求": "Unsupported client request",
+    "确认": "Confirm",
+    "取消": "Cancel",
+    "保存导出文件": "Save exported file",
+    "文件保存失败。请检查目标文件夹的权限和剩余空间后重试。":
+        "Could not save the file. Check folder permissions and free space, then try again.",
+    "下载中断，原文件未更改。请重新导出。":
+        "Download interrupted; the original file was not changed. Please export again.",
+    "文件仍在保存，请完成或取消保存后再退出。":
+        "A file is still saving. Finish or cancel before quitting.",
+    "仍有任务或尚未保存的修改": "Tasks are running or changes are unsaved",
+    "退出会停止本地任务，未保存的修改可能丢失。已经提交的云端请求可能继续计费。":
+        "Quitting stops local tasks; unsaved changes may be lost. Cloud requests already submitted may still be billed.",
+    "返回工坊": "Back to Studio",
+    "退出": "Quit",
+]
+
+func currentUILocale() -> String {
+    let defaults = UserDefaults.standard
+    if let saved = defaults.string(forKey: "uiLocale"), saved == "en" || saved == "zh-CN" {
+        return saved
+    }
+    let prefs = defaults.dictionary(forKey: "workspacePreferences") ?? [:]
+    if let locale = prefs["herogame.studio.locale"] as? String, locale == "en" || locale == "zh-CN" {
+        defaults.set(locale, forKey: "uiLocale")
+        return locale
+    }
+    return "zh-CN"
+}
+
+func L(_ key: String) -> String {
+    currentUILocale() == "en" ? (englishUI[key] ?? key) : key
+}
+
 final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply, WKDownloadDelegate {
     var window: NSWindow!
     var web: WKWebView!
@@ -26,9 +94,10 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("HeroGameStudio", isDirectory: true)
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        _ = currentUILocale()
         buildMenu()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: 860), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "作图工坊"
+        window.title = L("作图工坊")
         window.minSize = NSSize(width: 860, height: 620)
         window.center(); window.delegate = self; window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
@@ -44,39 +113,47 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
         web.autoresizingMask = [.width, .height]; web.navigationDelegate = self; web.uiDelegate = self
         web.setValue(false, forKey: "drawsBackground")
         window.contentView!.addSubview(web)
-        status = NSTextField(labelWithString: "正在启动作图工坊…")
+        status = NSTextField(labelWithString: L("正在启动作图工坊…"))
         status.font = .systemFont(ofSize: 18); status.alignment = .center
         status.translatesAutoresizingMaskIntoConstraints = false
         window.contentView!.addSubview(status)
-        retry = NSButton(title: "重新启动", target: self, action: #selector(startBackend))
+        retry = NSButton(title: L("重新启动"), target: self, action: #selector(startBackend))
         retry.translatesAutoresizingMaskIntoConstraints = false; retry.isHidden = true
         window.contentView!.addSubview(retry)
         NSLayoutConstraint.activate([status.centerXAnchor.constraint(equalTo: window.contentView!.centerXAnchor), status.centerYAnchor.constraint(equalTo: window.contentView!.centerYAnchor), retry.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 24), retry.centerXAnchor.constraint(equalTo: status.centerXAnchor)])
         window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         startBackend()
     }
+    func applyLocale() {
+        window?.title = L("作图工坊")
+        retry?.title = L("重新启动")
+        if status?.isHidden == false, !ready {
+            status.stringValue = L("正在启动作图工坊…")
+        }
+        buildMenu()
+    }
     func buildMenu() {
         let menu = NSMenu()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "关于作图工坊", action: #selector(about), keyEquivalent: "")
+        appMenu.addItem(withTitle: L("关于作图工坊"), action: #selector(about), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "隐藏作图工坊", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "退出作图工坊", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: L("隐藏作图工坊"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: L("退出作图工坊"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appItem = NSMenuItem(); appItem.submenu = appMenu; menu.addItem(appItem)
-        let edit = NSMenu(title: "编辑")
-        for (title, selector, key) in [("撤销", "undo:", "z"), ("重做", "redo:", "Z"), ("剪切", "cut:", "x"), ("复制", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] {
+        let edit = NSMenu(title: L("编辑"))
+        for (title, selector, key) in [(L("撤销"), "undo:", "z"), (L("重做"), "redo:", "Z"), (L("剪切"), "cut:", "x"), (L("复制"), "copy:", "c"), (L("粘贴"), "paste:", "v"), (L("全选"), "selectAll:", "a")] {
             edit.addItem(withTitle: title, action: Selector(selector), keyEquivalent: key)
         }
-        let editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: ""); editItem.submenu = edit; menu.addItem(editItem)
-        let view = NSMenu(title: "窗口")
-        view.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        view.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        view.addItem(withTitle: "显示作图工坊", action: #selector(showWindow), keyEquivalent: "0")
-        let viewItem = NSMenuItem(title: "窗口", action: nil, keyEquivalent: ""); viewItem.submenu = view; menu.addItem(viewItem)
+        let editItem = NSMenuItem(title: L("编辑"), action: nil, keyEquivalent: ""); editItem.submenu = edit; menu.addItem(editItem)
+        let view = NSMenu(title: L("窗口"))
+        view.addItem(withTitle: L("最小化"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        view.addItem(withTitle: L("关闭窗口"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        view.addItem(withTitle: L("显示作图工坊"), action: #selector(showWindow), keyEquivalent: "0")
+        let viewItem = NSMenuItem(title: L("窗口"), action: nil, keyEquivalent: ""); viewItem.submenu = view; menu.addItem(viewItem)
         NSApp.mainMenu = menu
     }
     @objc func about() {
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "作图工坊", .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "", .credits: NSAttributedString(string: "本地像素游戏资产与桌宠立绘工坊\nAPI Key 由你提供 · 工程保存在所选文件夹\n手动更新：退出后替换应用，工程与设置保留\n测试版 · 尚未通过 Apple 公证")])
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: L("作图工坊"), .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "", .credits: NSAttributedString(string: L("本地像素游戏资产与桌宠立绘工坊\nAPI Key 由你提供 · 工程保存在所选文件夹\n手动更新：退出后替换应用，工程与设置保留\n测试版 · 尚未通过 Apple 公证"))])
     }
     @objc func showWindow() { window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc func startBackend() {
@@ -87,13 +164,14 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
             web.load(URLRequest(url: url.url!)); return
         }
         guard service?.isRunning != true else { return }
-        ready = false; port = nil; output = Data(); status.stringValue = "正在启动作图工坊…"; status.isHidden = false; retry.isHidden = true; web.isHidden = true
+        ready = false; port = nil; output = Data(); status.stringValue = L("正在启动作图工坊…"); status.isHidden = false; retry.isHidden = true; web.isHidden = true
         do {
             try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
             let child = Process()
             child.executableURL = Bundle.main.resourceURL!.appendingPathComponent("backend/studio-service")
             child.currentDirectoryURL = dataDirectory
-            var env: [String: String] = ["PATH":"/usr/bin:/bin:/usr/sbin:/sbin", "HOME":NSHomeDirectory(), "TMPDIR":NSTemporaryDirectory(), "LANG":"zh_CN.UTF-8", "STUDIO_DATA_DIR":dataDirectory.path, "STUDIO_DESKTOP_TOKEN":token]
+            let locale = currentUILocale()
+            var env: [String: String] = ["PATH":"/usr/bin:/bin:/usr/sbin:/sbin", "HOME":NSHomeDirectory(), "TMPDIR":NSTemporaryDirectory(), "LANG": locale == "en" ? "en_US.UTF-8" : "zh_CN.UTF-8", "STUDIO_UI_LOCALE": locale, "STUDIO_DATA_DIR":dataDirectory.path, "STUDIO_DESKTOP_TOKEN":token]
             // CLI users may explicitly provide their own key; Finder launches need none.
             for name in ["STUDIO_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"] {
                 if let value = ProcessInfo.processInfo.environment[name] { env[name] = value }
@@ -107,20 +185,20 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
             }
             child.terminationHandler = { [weak self] _ in DispatchQueue.main.async {
                 guard let self, !self.quitting else { return }
-                self.fail("本地服务已停止。已保存的工程仍在原文件夹，请重新启动。")
+                self.fail(L("本地服务已停止。已保存的工程仍在原文件夹，请重新启动。"))
             }}
             service = child; try child.run()
             startupTimer?.invalidate()
             startupTimer = Timer.scheduledTimer(withTimeInterval: 45, repeats: false) { [weak self] _ in
                 guard let self, !self.ready else { return }
-                self.stopBackend(); self.fail("启动超时。请确认应用已完整复制到本机，再重新启动。")
+                self.stopBackend(); self.fail(L("启动超时。请确认应用已完整复制到本机，再重新启动。"))
             }
-        } catch { fail("无法启动内置服务。请确认应用完整、数据目录可写，再重新启动。") }
+        } catch { fail(L("无法启动内置服务。请确认应用完整、数据目录可写，再重新启动。")) }
     }
     func receive(_ bytes: Data) {
         guard !ready else { return }
         output.append(bytes)
-        guard output.count < 65536 else { stopBackend(); fail("内置服务启动异常，请重新安装应用。"); return }
+        guard output.count < 65536 else { stopBackend(); fail(L("内置服务启动异常，请重新安装应用。")); return }
         guard let end = output.firstIndex(of: 10), let object = try? JSONSerialization.jsonObject(with: output[..<end]) as? [String: Int], let number = object["port"], (1...65535).contains(number) else { return }
         port = number; ready = true; startupTimer?.invalidate()
         var url = URLComponents(string: "http://127.0.0.1:\(number)/_desktop/start")!
@@ -135,7 +213,7 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
     }
     func isLocal(_ url: URL?) -> Bool { url?.scheme == "http" && url?.host == "127.0.0.1" && url?.port == port }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { status.isHidden = true; retry.isHidden = true; web.isHidden = false }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if (error as NSError).code != NSURLErrorCancelled { fail("无法打开工作区。请重新启动应用。") } }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if (error as NSError).code != NSURLErrorCancelled { fail(L("无法打开工作区。请重新启动应用。")) } }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if action.shouldPerformDownload { decisionHandler(.download); return }
         if isLocal(action.request.url) || action.request.url?.scheme == "blob" { decisionHandler(.allow); return }
@@ -149,23 +227,40 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
         return nil
     }
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
-        guard message.frameInfo.isMainFrame, isLocal(message.frameInfo.request.url), let body = message.body as? [String: Any], let action = body["action"] as? String else { replyHandler(nil, "无效的客户端请求"); return }
+        guard message.frameInfo.isMainFrame, isLocal(message.frameInfo.request.url), let body = message.body as? [String: Any], let action = body["action"] as? String else { replyHandler(nil, L("无效的客户端请求")); return }
         if action == "pickFolder" {
             let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true
-            panel.prompt = "选择文件夹"; panel.message = body["prompt"] as? String ?? "选择工程文件夹"
+            panel.prompt = L("选择文件夹"); panel.message = body["prompt"] as? String ?? L("选择工程文件夹")
             if let path = body["directory"] as? String, !path.isEmpty { panel.directoryURL = URL(fileURLWithPath: path) }
             panel.beginSheetModal(for: window) { result in replyHandler(result == .OK ? panel.url?.path ?? "" : "", nil) }
-        } else if action == "preference", let key = body["key"] as? String, key.hasPrefix("herogame.studio.session:") || key.hasPrefix("herogame.splitFrames.") {
+        } else if action == "preference", let key = body["key"] as? String, key == "herogame.studio.locale" || key.hasPrefix("herogame.studio.session:") || key.hasPrefix("herogame.splitFrames.") {
             var prefs = preferences.dictionary(forKey: "workspacePreferences") ?? [:]
-            if let value = body["value"] as? String, value.utf8.count < 200000 { prefs[key] = value } else { prefs.removeValue(forKey: key) }
+            if let value = body["value"] as? String, value.utf8.count < 200000 {
+                if key == "herogame.studio.locale" {
+                    guard value == "en" || value == "zh-CN" else { replyHandler(nil, L("不支持的客户端请求")); return }
+                    prefs[key] = value
+                    preferences.set(value, forKey: "uiLocale")
+                    preferences.set(prefs, forKey: "workspacePreferences")
+                    applyLocale()
+                    replyHandler(true, nil)
+                    return
+                }
+                prefs[key] = value
+            } else {
+                prefs.removeValue(forKey: key)
+                if key == "herogame.studio.locale" {
+                    preferences.removeObject(forKey: "uiLocale")
+                    applyLocale()
+                }
+            }
             preferences.set(prefs, forKey: "workspacePreferences"); replyHandler(true, nil)
         } else if action == "prepareDownload", let id = body["id"] as? String, let filename = body["filename"] as? String {
-            guard preparing == nil && downloads.isEmpty else { replyHandler(nil, "另一个文件正在保存，请稍候。"); return }
+            guard preparing == nil && downloads.isEmpty else { replyHandler(nil, L("另一个文件正在保存，请稍候。")); return }
             preparing = (id, (filename as NSString).lastPathComponent); replyHandler(true, nil)
-        } else { replyHandler(nil, "不支持的客户端请求") }
+        } else { replyHandler(nil, L("不支持的客户端请求")) }
     }
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) { let alert = NSAlert(); alert.messageText = message; alert.beginSheetModal(for: window) { _ in completionHandler() } }
-    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) { let alert = NSAlert(); alert.messageText = message; alert.addButton(withTitle: "确认"); alert.addButton(withTitle: "取消"); alert.beginSheetModal(for: window) { completionHandler($0 == .alertFirstButtonReturn) } }
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) { let alert = NSAlert(); alert.messageText = message; alert.addButton(withTitle: L("确认")); alert.addButton(withTitle: L("取消")); alert.beginSheetModal(for: window) { completionHandler($0 == .alertFirstButtonReturn) } }
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) { let panel = NSOpenPanel(); panel.allowsMultipleSelection = parameters.allowsMultipleSelection; panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.urls : nil) } }
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { download.delegate = self }
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { download.delegate = self }
@@ -173,7 +268,7 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
         let key = ObjectIdentifier(download), request = preparing; preparing = nil
         if let id = request?.id { downloadIDs[key] = id }
         let panel = NSSavePanel(); panel.nameFieldStringValue = request?.filename ?? (suggestedFilename as NSString).lastPathComponent
-        panel.canCreateDirectories = true; panel.title = "保存导出文件"
+        panel.canCreateDirectories = true; panel.title = L("保存导出文件")
         panel.beginSheetModal(for: window) { result in
             guard result == .OK, let destination = panel.url else {
                 self.finish(download, saved: false)
@@ -191,9 +286,9 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
             if FileManager.default.fileExists(atPath: item.destination.path) { _ = try FileManager.default.replaceItemAt(item.destination, withItemAt: item.temp) }
             else { try FileManager.default.moveItem(at: item.temp, to: item.destination) }
             finish(download, saved: true)
-        } catch { finish(download, saved: false, error: "文件保存失败。请检查目标文件夹的权限和剩余空间后重试。") }
+        } catch { finish(download, saved: false, error: L("文件保存失败。请检查目标文件夹的权限和剩余空间后重试。")) }
     }
-    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) { finish(download, saved: false, error: "下载中断，原文件未更改。请重新导出。") }
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) { finish(download, saved: false, error: L("下载中断，原文件未更改。请重新导出。")) }
     func finish(_ download: WKDownload, saved: Bool, error: String? = nil) {
         let key = ObjectIdentifier(download)
         if let item = downloads.removeValue(forKey: key) { try? FileManager.default.removeItem(at: item.temp) }
@@ -205,14 +300,14 @@ final class StudioApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavi
     func windowShouldClose(_ sender: NSWindow) -> Bool { NSApp.terminate(nil); return false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if quitting { return .terminateNow }
-        if !downloads.isEmpty || preparing != nil { let alert = NSAlert(); alert.messageText = "文件仍在保存，请完成或取消保存后再退出。"; alert.runModal(); return .terminateCancel }
+        if !downloads.isEmpty || preparing != nil { let alert = NSAlert(); alert.messageText = L("文件仍在保存，请完成或取消保存后再退出。"); alert.runModal(); return .terminateCancel }
         guard ready else { quitting = true; stopBackend(); return .terminateNow }
         web.evaluateJavaScript("window.studioDesktopCloseState ? window.studioDesktopCloseState() : ({busy:false,dirty:false})") { result, error in
             let state = result as? [String: Bool] ?? [:]
             if state["busy"] == true || state["dirty"] == true || error != nil {
-                let alert = NSAlert(); alert.messageText = "仍有任务或尚未保存的修改"
-                alert.informativeText = "退出会停止本地任务，未保存的修改可能丢失。已经提交的云端请求可能继续计费。"
-                alert.addButton(withTitle: "返回工坊"); alert.addButton(withTitle: "退出")
+                let alert = NSAlert(); alert.messageText = L("仍有任务或尚未保存的修改")
+                alert.informativeText = L("退出会停止本地任务，未保存的修改可能丢失。已经提交的云端请求可能继续计费。")
+                alert.addButton(withTitle: L("返回工坊")); alert.addButton(withTitle: L("退出"))
                 guard alert.runModal() == .alertSecondButtonReturn else { sender.reply(toApplicationShouldTerminate: false); return }
             }
             self.quitting = true; self.stopBackend(); sender.reply(toApplicationShouldTerminate: true)

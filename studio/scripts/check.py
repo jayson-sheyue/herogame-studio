@@ -16,6 +16,7 @@ def main() -> int:
     commands = [
         [sys.executable, "-m", "compileall", "-q", str(studio)],
         [sys.executable, "-m", "unittest", "discover", "-s", str(studio), "-v"],
+        [node, "--check", str(studio / "static" / "i18n.js")],
         [node, "--check", str(studio / "static" / "app.js")],
         [node, "--test", str(studio / "test_frontend.cjs")],
         [node, "--test", str(studio.parent / "desktop" / "test_bridge.cjs")],
